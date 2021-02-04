@@ -194,6 +194,8 @@ class SequenceLabelingEncoder(BaseEncoder):
 
     def fit(self, labels):
         self.classes_ = sorted(list(set(lab_i["label"] for lab in labels for lab_i in lab) | {self.pad_token}))
+        if self.bio_tagging:
+            self.classes_ = [pre + c for c in classes_ for pre in ("B-", "I-")]
         self.lookup = {c: i for i, c in enumerate(self.classes_)}
 
     def pre_process_label(self, out, labels):
@@ -222,6 +224,9 @@ class SequenceLabelingEncoder(BaseEncoder):
         labels, pad_idx = self.pre_process_label(out, labels)
         labels_out = [pad_idx for _ in out.tokens]
         for label in labels:
+            current_label = label["label"]
+            if self.bio_tagging:
+                current_label = "B-" + current_label
             for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
                 # Label extends less than halfway through token
                 if label["end"] < (start + end + 1) // 2:
@@ -230,15 +235,17 @@ class SequenceLabelingEncoder(BaseEncoder):
                 if overlap:
                     if not agree:
                         raise ValueError("Tokens and labels do not align")
-                    if labels_out[i] != pad_idx and self.lookup[label["label"]] != labels_out[i]:
+                    if labels_out[i] != pad_idx and self.lookup[current_label] != labels_out[i]:
                         LOGGER.warning("Overlapping labels were found, consider multilabel_sequence=True")
                     if label["label"] not in self.lookup:
                         LOGGER.warning(
                             "Attempting to encode unknown labels : {}, ignoring for now but this will likely not "
-                            "result in desirable behaviour. Available labels are {}".format(label["label"], self.lookup.keys())
+                            "result in desirable behaviour. Available labels are {}".format(current_label, self.lookup.keys())
                         )
                     else:
-                        labels_out[i] = self.lookup[label["label"]]
+                        labels_out[i] = self.lookup[current_label]
+                        if self.bio_tagging and current_label[:2] == "B-":
+                            current_label = "I-" + current_label[2:]
         return labels_out
 
     def inverse_transform(self, y):
