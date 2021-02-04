@@ -277,6 +277,7 @@ def get_default_config():
         use_gpu_crf_predict="auto",
         max_empty_chunk_ratio=1.0,
         auto_negative_sampling=False,
+        bio_tagging=False,
         #
         # Regression Params
         regression_loss="L2",
