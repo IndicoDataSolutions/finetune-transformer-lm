@@ -101,7 +101,8 @@ class SequencePipeline(BasePipeline):
     def _target_encoder(self):
         if self.multi_label:
             return SequenceMultiLabelingEncoder(pad_token=self.config.pad_token)
-        return SequenceLabelingEncoder(pad_token=self.config.pad_token)
+        return SequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                       bio_tagging=self.config.bio_tagging)
 
 
 def _combine_and_format(subtokens, start, end, raw_text):

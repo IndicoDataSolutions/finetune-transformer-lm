@@ -186,10 +186,11 @@ class OrdinalRegressionEncoder(OrdinalEncoder, BaseEncoder):
 
 class SequenceLabelingEncoder(BaseEncoder):
 
-    def __init__(self, pad_token):
+    def __init__(self, pad_token, bio_tagging):
         self.classes_ = None
         self.pad_token = pad_token
         self.lookup = None
+        self.bio_tagging = bio_tagging
 
     def fit(self, labels):
         self.classes_ = sorted(list(set(lab_i["label"] for lab in labels for lab_i in lab) | {self.pad_token}))
