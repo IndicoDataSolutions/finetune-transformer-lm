@@ -301,6 +301,20 @@ class TestSequenceLabeler(unittest.TestCase):
         del preds[0]["confidence"]
         self.assertEquals(preds, labels)
 
+    def test_bio_tagging(self):
+        model = SequenceLabeler(bio_tagging=True)
+        text = "Look! Sequential entity-tagging!"
+        labels = [
+            {"start": 6, "end": 16, "text": "Sequential", "label": "entity"},
+            {"start": 17, "end": 24, "text": "entity-", "label": "entity"},
+            {"start": 24, "end": 31, "text": "tagging", "label": "entity"},
+        ]
+        model.fit([text] * 30, [labels] * 30)
+        preds = model.predict([text])[0]
+        self.assertEqual(len(preds), 3)
+        for p in preds:
+            del p["confidence"]
+        self.assertEquals(preds, labels)
 
     def test_auto_negative_chunks(self):
         raw_docs = ["".join(text) for text in self.texts]
