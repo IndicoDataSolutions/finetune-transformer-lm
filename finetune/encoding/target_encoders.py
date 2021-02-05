@@ -186,7 +186,7 @@ class OrdinalRegressionEncoder(OrdinalEncoder, BaseEncoder):
 
 class SequenceLabelingEncoder(BaseEncoder):
 
-    def __init__(self, pad_token, bio_tagging):
+    def __init__(self, pad_token, bio_tagging=False):
         self.classes_ = None
         self.pad_token = pad_token
         self.lookup = None
