@@ -61,6 +61,7 @@ def finetune_to_indico_sequence(
     none_value=None,
     subtoken_predictions=False,
     associations=None,
+    bio_tagging=False,
 ):
     """
     Maps from the labeled substring format into the 'indico' format. This is the exact inverse operation to
@@ -130,6 +131,7 @@ def finetune_to_indico_sequence(
                     )
                     continue
 
+
                 extended_existing_label = False
                 for item in (doc_annotations if multilabel else doc_annotations[-1:]):
                     # handle case where we extend existing annotation
@@ -139,6 +141,8 @@ def finetune_to_indico_sequence(
                         # and only separated by whitespace
                         and item["end"] <= raw_annotation_end
                         and not raw_text[item["end"]: raw_annotation_start].strip()
+                        # and not BIO tagging
+                        and not bio_tagging
                     ):
                         item["end"] = raw_annotation_end
                         item["text"] = raw_text[item["start"]: raw_annotation_end]
