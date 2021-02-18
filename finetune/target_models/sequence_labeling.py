@@ -9,6 +9,8 @@ from finetune.base import BaseModel
 from finetune.encoding.target_encoders import (
     SequenceLabelingEncoder,
     SequenceMultiLabelingEncoder,
+    GroupSequenceLabelingEncoder,
+    PipelineSequenceLabelingEncoder,
 )
 from finetune.nn.target_blocks import sequence_labeler
 from finetune.nn.crf import sequence_decode
@@ -101,6 +103,12 @@ class SequencePipeline(BasePipeline):
     def _target_encoder(self):
         if self.multi_label:
             return SequenceMultiLabelingEncoder(pad_token=self.config.pad_token)
+        if self.config.nested_group_tagging:
+            return GroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                           bio_tagging=self.config.bio_tagging)
+        if self.config.pipeline_group_tagging:
+            return PipelineSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                           bio_tagging=self.config.bio_tagging)
         return SequenceLabelingEncoder(pad_token=self.config.pad_token,
                                        bio_tagging=self.config.bio_tagging)
 
