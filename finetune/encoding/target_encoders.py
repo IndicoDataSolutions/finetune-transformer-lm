@@ -183,91 +183,6 @@ class OrdinalRegressionEncoder(OrdinalEncoder, BaseEncoder):
     def target_labels(self):
         raise ValueError
 
-def is_continuous(group):
-    group_tokens = group["tokens"]
-    group_tokens = sorted(group_tokens, key=lambda x: x["start"])
-    end = group_tokens[0]["end"]
-    for word in group_tokens[1:]:
-        if word["start"] != end + 1:
-            return False
-    return True
-
-class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
-    def __init__(self, pad_token, bio_tagging=True):
-        super().__init__(pad_token, bio_tagging=bio_tagging, group_tagging=True)
-
-    def fit(self, labels):
-        super().fit(labels)
-        n_classes = []
-        for c in self.classes:
-            if c != self.pad_token:
-                for pre in ("BG-", "IG-"):
-                    if self.bio_tagging and (pre == "BG-" and c[:2] == "I-"):
-                        # Not possible to start a group in middle of entity
-                        continue
-                    n_classes.append(pre + c)
-        self.classes_.extend(n_classes)
-        self.lookup = {c: i for i, c in enumerate(self.classes_)}
-        
-    def transform(self, out, labels):
-        labels, groups = labels
-        for label in labels:
-            label["group_start"] = None
-        for group in groups:
-            if not is_continuous(group):
-                continue
-            group_start = min([t["start"] for t in group["tokens"]])
-            group_end = max([t["end"] for t in group["tokens"]])
-            group_labels = []
-            for label in labels:
-                if label["start"] >= group_start and label["end"] <= group_end:
-                    group_labels.append(label)
-            group_labels = sorted(group_labels, key=lambda x: x["start"])
-            for label in group_labels[1:]:
-                label["group_start"] = False
-        super().transform(out, labels)
-
-class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
-    """
-    Processes targets for a pipeline approach.
-
-    Parameters:
-        group: If true, the target encoder will utilize the group information
-        as labels.
-    """
-    def __init__(self, pad_token, group=False, bio_tagging=True):
-        super().__init__(pad_token, bio_tagging=bio_tagging)
-        self.group = group
-
-    def fit(self, labels):
-        if self.group:
-            self.classes_ = [self.pad_token]
-            if self.bio_tagging:
-                self.classes_.extend(("B-GROUP", "I-GROUP"))
-            else:
-                self.classes_.append("GROUP")
-            self.lookup = {c: i for i, c in enumerate(self.classes_)}
-        else:
-            super().fit(labels)
-
-    def transform(self, out, labels):
-        labels, groups = labels
-        if self.group:
-            labels = []
-            for group in groups:
-                if not is_continuous(group):
-                    continue
-                group_start = min([t["start"] for t in group["tokens"]])
-                group_end = max([t["end"] for t in group["tokens"]])
-                group_text = " ".join([t["text"] for t in group["tokens"]])
-                labels.append({
-                    "start": group_start,
-                    "end": group_end,
-                    "label": "GROUP",
-                    "text": group_text,
-                })
-        super().transform(self, out, labels)
-
 class SequenceLabelingEncoder(BaseEncoder):
 
     def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
@@ -354,6 +269,93 @@ class SequenceLabelingEncoder(BaseEncoder):
     def inverse_transform(self, y):
         # TODO: update when finetune_to_indico is removed
         return [self.classes_[l] for l in y]
+
+def is_continuous(group):
+    group_tokens = group["tokens"]
+    group_tokens = sorted(group_tokens, key=lambda x: x["start"])
+    end = group_tokens[0]["end"]
+    for word in group_tokens[1:]:
+        if word["start"] == end + 1 or word["start"] == end:
+            end = word["end"]
+        else:
+            return False
+    return True
+
+class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
+    def __init__(self, pad_token, bio_tagging=True):
+        super().__init__(pad_token, bio_tagging=bio_tagging, group_tagging=True)
+
+    def fit(self, labels):
+        labels, groups = list(zip(*labels))
+        super().fit(labels)
+        n_classes = []
+        for c in self.classes_:
+            if c != self.pad_token:
+                for pre in ("BG-", "IG-"):
+                    if self.bio_tagging and (pre == "BG-" and c[:2] == "I-"):
+                        # Not possible to start a group in middle of entity
+                        continue
+                    n_classes.append(pre + c)
+        self.classes_.extend(n_classes)
+        self.lookup = {c: i for i, c in enumerate(self.classes_)}
+        
+    def transform(self, out, labels):
+        labels, groups = labels
+        for label in labels:
+            label["group_start"] = None
+        for group in groups:
+            if not is_continuous(group):
+                continue
+            group_start = min([t["start"] for t in group["tokens"]])
+            group_end = max([t["end"] for t in group["tokens"]])
+            group_labels = []
+            for label in labels:
+                if label["start"] >= group_start and label["end"] <= group_end:
+                    group_labels.append(label)
+            group_labels = sorted(group_labels, key=lambda x: x["start"])
+            group_labels[0]["group_start"] = True
+            for label in group_labels[1:]:
+                label["group_start"] = False
+            print(group)
+            print(group_labels)
+        return super().transform(out, labels)
+
+class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
+    """
+    Processes targets for a pipeline approach.
+
+    Parameters:
+        group: If true, the target encoder will utilize the group information
+        as labels.
+    """
+    def __init__(self, pad_token, group=False, bio_tagging=True):
+        super().__init__(pad_token, bio_tagging=bio_tagging)
+
+    def fit(self, labels):
+        labels, groups = list(zip(*labels))
+        self.classes_ = [self.pad_token]
+        if self.bio_tagging:
+            self.classes_.extend(("B-GROUP", "I-GROUP"))
+        else:
+            self.classes_.append("GROUP")
+        self.lookup = {c: i for i, c in enumerate(self.classes_)}
+
+    def transform(self, out, labels):
+        labels, groups = labels
+        labels = []
+        for group in groups:
+            if not is_continuous(group):
+                continue
+            group_start = min([t["start"] for t in group["tokens"]])
+            group_end = max([t["end"] for t in group["tokens"]])
+            group_text = " ".join([t["text"] for t in group["tokens"]])
+            labels.append({
+                "start": group_start,
+                "end": group_end,
+                "label": "GROUP",
+                "text": group_text,
+            })
+        return super().transform(out, labels)
 
 
 class SequenceMultiLabelingEncoder(SequenceLabelingEncoder):

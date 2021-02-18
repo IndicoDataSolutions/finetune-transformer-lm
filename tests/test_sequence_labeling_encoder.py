@@ -1,7 +1,11 @@
 import numpy as np
 
 from finetune.encoding.input_encoder import EncodedOutput
-from finetune.encoding.target_encoders import SequenceLabelingEncoder
+from finetune.encoding.target_encoders import (
+    SequenceLabelingEncoder, 
+    GroupSequenceLabelingEncoder, 
+    PipelineSequenceLabelingEncoder, 
+)
 
 def test_sequence_label_encoder():
     encoder = SequenceLabelingEncoder(pad_token="<PAD>")
@@ -87,3 +91,58 @@ def test_sequence_label_bio_tagging():
     )
     label_arr = encoder.transform(out, labels)
     assert label_arr == [0, 1, 1, 2, 1, 2, 1, 0]
+
+def test_nest_group_sequence_label():
+    encoder = GroupSequenceLabelingEncoder(pad_token="<PAD>", bio_tagging=True)
+    labels = [
+        {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
+        {'start': 5, 'end': 12, 'label': 'z', 'text': 'percent'},
+        {'start': 13, 'end': 15, 'label': 'z', 'text': '(5%'},
+        {'start': 15, 'end': 16, 'label': 'z', 'text': ')'},
+    ]
+    groups = [
+        {'tokens': [
+            {'start': 13, 'end': 15, 'text': '(5%'},
+            {'start': 15, 'end': 16, 'text': ')'},
+        ], 'label': None}
+    ]
+    label = (labels, groups)
+    encoder.fit([label])
+    assert len(encoder.classes_) == 6
+    out = EncodedOutput(
+        token_ids=np.array([   0, 9583,  139,   40,  249, 8875,    2]), 
+        tokens=np.array(['0', 'five', ' per', 'cent', ' (', '5', '%)', '2'], dtype='<U21'), 
+        token_ends=np.array([-1,  4, 8, 12, 14, 15, 17, -1]), 
+        token_starts=np.array([-1,  0,  5, 8, 13, 14, 15, -1]), 
+        useful_start=0, 
+        useful_end=512
+    )
+    label_arr = encoder.transform(out, label)
+    assert label_arr == [0, 1, 1, 2, 3, 5, 4, 0]
+
+def test_pipeline_group_sequence_label():
+    encoder = PipelineSequenceLabelingEncoder(pad_token="<PAD>", bio_tagging=True)
+    labels = [
+        {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
+        {'start': 5, 'end': 12, 'label': 'z', 'text': 'percent'},
+        {'start': 13, 'end': 15, 'label': 'z', 'text': '(5%'},
+        {'start': 15, 'end': 16, 'label': 'z', 'text': ')'},
+    ]
+    groups = [
+        {'tokens': [
+            {'start': 13, 'end': 16, 'text': '(5%)'},
+        ], 'label': None}
+    ]
+    label = (labels, groups)
+    encoder.fit([label])
+    assert len(encoder.classes_) == 3
+    out = EncodedOutput(
+        token_ids=np.array([   0, 9583,  139,   40,  249, 8875,    2]), 
+        tokens=np.array(['0', 'five', ' per', 'cent', ' (', '5', '%)', '2'], dtype='<U21'), 
+        token_ends=np.array([-1,  4, 8, 12, 14, 15, 17, -1]), 
+        token_starts=np.array([-1,  0,  5, 8, 13, 14, 15, -1]), 
+        useful_start=0, 
+        useful_end=512
+    )
+    label_arr = encoder.transform(out, label)
+    assert label_arr == [0, 0, 0, 0, 1, 2, 2, 0]
