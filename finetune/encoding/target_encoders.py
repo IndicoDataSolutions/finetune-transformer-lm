@@ -271,15 +271,18 @@ class SequenceLabelingEncoder(BaseEncoder):
         return [self.classes_[l] for l in y]
 
 def is_continuous(group):
-    group_tokens = group["tokens"]
-    group_tokens = sorted(group_tokens, key=lambda x: x["start"])
-    end = group_tokens[0]["end"]
-    for word in group_tokens[1:]:
-        if word["start"] == end + 1 or word["start"] == end:
-            end = word["end"]
-        else:
-            return False
-    return True
+    # group_tokens = group["tokens"]
+    # group_tokens = sorted(group_tokens, key=lambda x: x["start"])
+    # end = group_tokens[0]["end"]
+    # for word in group_tokens[1:]:
+    #     if word["start"] == end + 1 or word["start"] == end:
+    #         end = word["end"]
+    #     else:
+    #         return False
+    # return True
+
+    # If there is only a single span, the group is continuous
+    return len(group["tokens"] == 1)
 
 class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
     def __init__(self, pad_token, bio_tagging=True):
