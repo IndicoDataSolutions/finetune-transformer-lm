@@ -333,6 +333,9 @@ def get_default_config():
         beam_size=1,
         beam_search_alpha=0.2,
         include_bos_eos=True,
+        #
+        # Line Items
+        group_bio_tagging=False,
         # Serialize finetune version with model
         version=VERSION,
     )
