@@ -329,16 +329,24 @@ class SequenceLabeler(BaseModel):
                 )
                 last_end = end_idx
 
+                if self.config.group_bio_tagging:
+                    group_prefix = None
+                    if label[:3] == "BG-" or label[:3] == "IG-":
+                        group_prefix, label = label[:3], label[3:]
                 if self.config.bio_tagging:
                     bio_prefix = None
                     if label != self.config.pad_token:
                         bio_prefix, label = label[:2], label[2:]
+                if self.config.group_bio_tagging:
+                    # Keep the group prefix for later decoding
+                    label = group_prefix + label
 
                 # if there are no current subsequences
                 # or the current subsequence has the wrong label
                 # or bio tagging is on and we have a B- tag
                 if (not doc_subseqs or label != doc_labels[-1] or per_token or
-                    (self.config.bio_tagging and bio_prefix == "B-")):
+                    (self.config.bio_tagging and bio_prefix == "B-") or
+                    (self.config.group_bio_tagging and group_bio_prefix="BG-")):
                     assert start_idx <= end_idx, "Start: {}, End: {}".format(
                         start_idx, end_idx
                     )
@@ -384,7 +392,7 @@ class SequenceLabeler(BaseModel):
             probs=all_probs,
             none_value=self.config.pad_token,
             subtoken_predictions=self.config.subtoken_predictions,
-            bio_tagging=self.config.bio_tagging,
+            bio_tagging=self.config.bio_tagging or self.config.group_bio_tagging,
         )
 
         if per_token:
