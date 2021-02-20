@@ -75,8 +75,7 @@ def test_sequence_label_bio_tagging():
     labels = [
         {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
         {'start': 5, 'end': 12, 'label': 'z', 'text': 'percent'},
-        {'start': 13, 'end': 15, 'label': 'z', 'text': '(5%'},
-        {'start': 15, 'end': 16, 'label': 'z', 'text': ')'},
+        {'start': 13, 'end': 17, 'label': 'z', 'text': '(5%)'},
     ]
     encoder.fit([labels])
     assert len(encoder.classes_) == 3
@@ -97,13 +96,11 @@ def test_nest_group_sequence_label():
     labels = [
         {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
         {'start': 5, 'end': 12, 'label': 'z', 'text': 'percent'},
-        {'start': 13, 'end': 15, 'label': 'z', 'text': '(5%'},
-        {'start': 15, 'end': 16, 'label': 'z', 'text': ')'},
+        {'start': 13, 'end': 17, 'label': 'z', 'text': '(5%)'},
     ]
     groups = [
         {'tokens': [
-            {'start': 13, 'end': 15, 'text': '(5%'},
-            {'start': 15, 'end': 16, 'text': ')'},
+            {'start': 5, 'end': 17, 'text': 'percent (5%)'},
         ], 'label': None}
     ]
     label = (labels, groups)
@@ -118,15 +115,17 @@ def test_nest_group_sequence_label():
         useful_end=512
     )
     label_arr = encoder.transform(out, label)
-    assert label_arr == [0, 1, 1, 2, 3, 5, 4, 0]
+    print(label_arr)
+    print(encoder.classes_)
+    input()
+    assert label_arr == [0, 1, 3, 5, 4, 5, 5, 0]
 
 def test_pipeline_group_sequence_label():
     encoder = PipelineSequenceLabelingEncoder(pad_token="<PAD>", bio_tagging=True)
     labels = [
         {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
         {'start': 5, 'end': 12, 'label': 'z', 'text': 'percent'},
-        {'start': 13, 'end': 15, 'label': 'z', 'text': '(5%'},
-        {'start': 15, 'end': 16, 'label': 'z', 'text': ')'},
+        {'start': 13, 'end': 17, 'label': 'z', 'text': '(5%)'},
     ]
     groups = [
         {'tokens': [
