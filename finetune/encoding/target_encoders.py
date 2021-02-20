@@ -229,18 +229,18 @@ class SequenceLabelingEncoder(BaseEncoder):
         bio_pre, group_pre = None, None
         for label in labels:
             current_tag = label["label"]
-            current_label = current_tag
-            if self.bio_tagging:
-                bio_pre = "B-"
-                current_label = bio_pre + current_label
-            if self.group_tagging:
-                if label["group_start"] is None:
-                    group_pre = ""
-                elif label["group_start"]:
-                    group_pre = "BG-"
-                else:
-                    group_pre = "IG-"
-                current_label = group_pre + current_label
+
+            if self.bio_tagging or self.group_tagging:
+                bio_pre, group_pre = "", ""
+                if self.bio_tagging:
+                    bio_pre = "B-"
+                if self.group_tagging:
+                    if label["group_start"]:
+                        group_pre = "BG-"
+                    elif label["group_start"] is not None:
+                        group_pre = "IG-"
+                current_label = f"{group_pre}{bio_pre}{current_tag}"
+
             for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
                 # Label extends less than halfway through token
                 if label["end"] < (start + end + 1) // 2:
@@ -258,12 +258,12 @@ class SequenceLabelingEncoder(BaseEncoder):
                         )
                     else:
                         labels_out[i] = self.lookup[current_label]
-                        if self.bio_tagging and bio_pre == "B-":
-                            bio_pre = "I-"
-                            current_label = bio_pre + current_tag
-                        if self.group_tagging and group_pre == "BG-":
-                            group_pre = "IG-"
-                            current_label = group_pre + current_label
+                        if self.bio_tagging or self.group_tagging:
+                            if self.bio_tagging and bio_pre == "B-":
+                                bio_pre = "I-"
+                            if self.group_tagging and group_pre == "BG-":
+                                group_pre = "IG-"
+                            current_label = f"{group_pre}{bio_pre}{current_tag}"
         return labels_out
 
     def inverse_transform(self, y):
@@ -282,7 +282,7 @@ def is_continuous(group):
     # return True
 
     # If there is only a single span, the group is continuous
-    return len(group["tokens"] == 1)
+    return len(group["tokens"]) == 1
 
 class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
     def __init__(self, pad_token, bio_tagging=True):
@@ -315,13 +315,16 @@ class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
             for label in labels:
                 if label["start"] >= group_start and label["end"] <= group_end:
                     group_labels.append(label)
-            group_labels = sorted(group_labels, key=lambda x: x["start"])
-            group_labels[0]["group_start"] = True
-            for label in group_labels[1:]:
-                label["group_start"] = False
-            print(group)
-            print(group_labels)
-        return super().transform(out, labels)
+            if group_labels:
+                group_labels = sorted(group_labels, key=lambda x: x["start"])
+                group_labels[0]["group_start"] = True
+                for label in group_labels[1:]:
+                    label["group_start"] = False
+        ret = super().transform(out, labels)
+        # Un-do the changes to the underlying data
+        for label in labels:
+            del label["group_start"]
+        return ret
 
 class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
     """
