@@ -24,42 +24,64 @@ from finetune.target_models.grouping import (
 class TestGroupingLabelers(unittest.TestCase):
     def test_nested_tagging(self):
         model = GroupSequenceLabeler()
-        text = "five percent ? (5%)"
+        text = ("five percent (5%) \n " +
+                "fifty percent (50%) \n " +
+                "two percent (2%) \n " +
+                "nine percent (9%) \n " +
+                "three percent (3%) \n ")
         labels = [
-            {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
-            {'start': 5, 'end': 14, 'label': 'z', 'text': 'percent ?'},
-            {'start': 15, 'end': 19, 'label': 'z', 'text': '(5%)'},
+            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
         ]
         groups = [
             {'tokens': [
-                {'start': 5, 'end': 19, 'text': 'percent ? (5%)'},
+                {'start': 0, 'end': 39, 'text': 'five percent (5%) \n fifty percent (50%)'},
+            ], 'label': None},
+            {'tokens': [
+                {'start': 61, 'end': 99, 'text': 'nine percent (9%) \n three percent (3%)'},
+            ], 'label': None}
+        ]
+        labels = (labels, groups)
+
+        model.fit([text] * 30, [labels] * 30)
+        preds = model.predict([text])[0]
+
+        self.assertEqual(len(preds), 2)
+        self.assertEqual(len(preds[0]), 5)
+        self.assertEqual(len(preds[1]), 2)
+
+        for p in preds[0]:
+            del p["confidence"]
+
+        self.assertEquals(preds, labels)
+
+    def test_pipeline_tagging(self):
+        model = PipelineSequenceLabeler()
+        text = ("five percent (5%) \n " +
+                "fifty percent (50%) \n " +
+                "two percent (2%) \n " +
+                "nine percent (9%) \n " +
+                "three percent (3%) \n ")
+        labels = [
+            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
+        ]
+        groups = [
+            {'tokens': [
+                {'start': 0, 'end': 39, 'text': 'five percent (5%) \n fifty percent (50%)'},
+            ], 'label': None},
+            {'tokens': [
+                {'start': 61, 'end': 99, 'text': 'nine percent (9%) \n three percent (3%)'},
             ], 'label': None}
         ]
         labels = (labels, groups)
         model.fit([text] * 30, [labels] * 30)
         preds = model.predict([text])[0]
         self.assertEqual(len(preds), 2)
-        self.assertEqual(len(preds[0]), 3)
-        self.assertEqual(len(preds[1]), 1)
-        for p in preds[0]:
-            del p["confidence"]
-        self.assertEquals(preds, labels)
-
-    def test_pipeline_tagging(self):
-        model = PipelineSequenceLabeler()
-        text = "five percent ? (5%)"
-        labels = [
-            {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
-            {'start': 5, 'end': 14, 'label': 'z', 'text': 'percent ?'},
-            {'start': 15, 'end': 19, 'label': 'z', 'text': '(5%)'},
-        ]
-        groups = [
-            {'tokens': [
-                {'start': 5, 'end': 19, 'text': 'percent ? (5%)'},
-            ], 'label': None}
-        ]
-        labels = (labels, groups)
-        model.fit([text] * 30, [labels] * 30)
-        preds = model.predict([text])[0]
-        self.assertEqual(len(preds), 1)
         self.assertEquals(preds, labels[1])
