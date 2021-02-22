@@ -5,6 +5,7 @@ from collections import Counter
 import tensorflow as tf
 import numpy as np
 
+from finetune.encoding.input_encoder import tokenize_context
 from finetune.target_models.sequence_labeling import (
     SequencePipeline,
     SequenceLabeler,
@@ -29,7 +30,6 @@ class GroupingPipeline(SequencePipeline):
                 yield feats
             if Y is not None:
                 yield feats, self.label_encoder.transform(out, Y)
-
 
 class GroupSequenceLabeler(SequenceLabeler):
     defaults = {"group_bio_tagging": True, "bio_tagging": True}
@@ -62,8 +62,11 @@ class GroupSequenceLabeler(SequenceLabeler):
                     continue
                 pre, tag = label["label"][:3], label["label"][3:]
                 label["label"] = tag
-                if ((pre == "BG-") or
-                    (groups and label["start"] - groups[-1]["tokens"][-1]["end"] > 1)):
+                if (
+                    (not groups) or
+                    (pre == "BG-") or
+                    (groups and label["start"] - groups[-1]["tokens"][-1]["end"] > 1)
+                ):
                     groups.append({
                         "tokens": [
                             {
