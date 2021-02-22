@@ -10,10 +10,18 @@ from finetune.target_models.sequence_labeling import (
     SequencePipeline,
     SequenceLabeler,
 )
+from finetune.encoding.target_encoders import (
+    SequenceLabelingEncoder,
+    GroupSequenceLabelingEncoder,
+    PipelineSequenceLabelingEncoder,
+)
 
 class GroupingPipeline(SequencePipeline):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, config, multi_label, nested_group_tagging=False,
+                 pipeline_group_tagging=False):
+        super().__init__(config, multi_label)
+        self.nested_group_tagging = nested_group_tagging
+        self.pipeline_group_tagging = pipeline_group_tagging
 
     def text_to_tokens_mask(self, X, Y=None, context=None):
         pad_token = (
@@ -30,6 +38,16 @@ class GroupingPipeline(SequencePipeline):
                 yield feats
             if Y is not None:
                 yield feats, self.label_encoder.transform(out, Y)
+
+    def _target_encoder(self):
+        if self.nested_group_tagging:
+            return GroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                           bio_tagging=self.config.bio_tagging)
+        if self.pipeline_group_tagging:
+            return PipelineSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                           bio_tagging=self.config.bio_tagging)
+        return SequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                       bio_tagging=self.config.bio_tagging)
 
 class GroupSequenceLabeler(SequenceLabeler):
     defaults = {"group_bio_tagging": True, "bio_tagging": True}
@@ -64,8 +82,9 @@ class GroupSequenceLabeler(SequenceLabeler):
                 label["label"] = tag
                 if (
                     (not groups) or
-                    (pre == "BG-") or
-                    (groups and label["start"] - groups[-1]["tokens"][-1]["end"] > 1)
+                    (pre == "BG-")
+                    # (pre == "BG-") or
+                    # (text[groups[-1]["tokens"][-1]["end"]:label["start"]].strip())
                 ):
                     groups.append({
                         "tokens": [

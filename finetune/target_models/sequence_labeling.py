@@ -9,8 +9,6 @@ from finetune.base import BaseModel
 from finetune.encoding.target_encoders import (
     SequenceLabelingEncoder,
     SequenceMultiLabelingEncoder,
-    GroupSequenceLabelingEncoder,
-    PipelineSequenceLabelingEncoder,
 )
 from finetune.nn.target_blocks import sequence_labeler
 from finetune.nn.crf import sequence_decode
@@ -22,13 +20,10 @@ from finetune.encoding.input_encoder import tokenize_context
 
 
 class SequencePipeline(BasePipeline):
-    def __init__(self, config, multi_label, nested_group_tagging=False,
-                 pipeline_group_tagging=False):
+    def __init__(self, config, multi_label):
         super(SequencePipeline, self).__init__(config)
         self.multi_label = multi_label
         self.empty_counts = {"empty": 0, "labeled": 0}
-        self.nested_group_tagging = nested_group_tagging
-        self.pipeline_group_tagging = pipeline_group_tagging
 
     def _update_empty_ratio(self, empty):
         if empty:
@@ -106,12 +101,6 @@ class SequencePipeline(BasePipeline):
     def _target_encoder(self):
         if self.multi_label:
             return SequenceMultiLabelingEncoder(pad_token=self.config.pad_token)
-        if self.nested_group_tagging:
-            return GroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
-                                           bio_tagging=self.config.bio_tagging)
-        if self.pipeline_group_tagging:
-            return PipelineSequenceLabelingEncoder(pad_token=self.config.pad_token,
-                                           bio_tagging=self.config.bio_tagging)
         return SequenceLabelingEncoder(pad_token=self.config.pad_token,
                                        bio_tagging=self.config.bio_tagging)
 
