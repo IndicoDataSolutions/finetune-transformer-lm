@@ -334,33 +334,40 @@ class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
         group: If true, the target encoder will utilize the group information
         as labels.
     """
-    def __init__(self, pad_token, group=False, bio_tagging=True):
+    def __init__(self, pad_token, group=True, bio_tagging=True):
         super().__init__(pad_token, bio_tagging=bio_tagging)
+        self.group = group
 
     def fit(self, labels):
-        labels, groups = list(zip(*labels))
-        self.classes_ = [self.pad_token]
-        if self.bio_tagging:
-            self.classes_.extend(("B-GROUP", "I-GROUP"))
+        if not self.group:
+            super().fit(labels)
         else:
-            self.classes_.append("GROUP")
-        self.lookup = {c: i for i, c in enumerate(self.classes_)}
+            labels, groups = list(zip(*labels))
+            self.classes_ = [self.pad_token]
+            if self.bio_tagging:
+                self.classes_.extend(("B-GROUP", "I-GROUP"))
+            else:
+                self.classes_.append("GROUP")
+            self.lookup = {c: i for i, c in enumerate(self.classes_)}
 
     def transform(self, out, labels):
         labels, groups = labels
-        labels = []
-        for group in groups:
-            if not is_continuous(group):
-                continue
-            group_start = min([t["start"] for t in group["tokens"]])
-            group_end = max([t["end"] for t in group["tokens"]])
-            group_text = " ".join([t["text"] for t in group["tokens"]])
-            labels.append({
-                "start": group_start,
-                "end": group_end,
-                "label": "GROUP",
-                "text": group_text,
-            })
+        if not self.group:
+            return super().transform(out, labels)
+        else:
+            labels = []
+            for group in groups:
+                if not is_continuous(group):
+                    continue
+                group_start = min([t["start"] for t in group["tokens"]])
+                group_end = max([t["end"] for t in group["tokens"]])
+                group_text = " ".join([t["text"] for t in group["tokens"]])
+                labels.append({
+                    "start": group_start,
+                    "end": group_end,
+                    "label": "GROUP",
+                    "text": group_text,
+                })
         return super().transform(out, labels)
 
 

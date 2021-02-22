@@ -17,12 +17,6 @@ from finetune.encoding.target_encoders import (
 )
 
 class GroupingPipeline(SequencePipeline):
-    def __init__(self, config, multi_label, nested_group_tagging=False,
-                 pipeline_group_tagging=False):
-        super().__init__(config, multi_label)
-        self.nested_group_tagging = nested_group_tagging
-        self.pipeline_group_tagging = pipeline_group_tagging
-
     def text_to_tokens_mask(self, X, Y=None, context=None):
         pad_token = (
             [self.config.pad_token] if self.multi_label else self.config.pad_token
@@ -39,15 +33,10 @@ class GroupingPipeline(SequencePipeline):
             if Y is not None:
                 yield feats, self.label_encoder.transform(out, Y)
 
+class NestedPipeline(GroupingPipeline):
     def _target_encoder(self):
-        if self.nested_group_tagging:
-            return GroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
-                                           bio_tagging=self.config.bio_tagging)
-        if self.pipeline_group_tagging:
-            return PipelineSequenceLabelingEncoder(pad_token=self.config.pad_token,
-                                           bio_tagging=self.config.bio_tagging)
-        return SequenceLabelingEncoder(pad_token=self.config.pad_token,
-                                       bio_tagging=self.config.bio_tagging)
+        return GroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                            bio_tagging=self.config.bio_tagging)
 
 class GroupSequenceLabeler(SequenceLabeler):
     defaults = {"group_bio_tagging": True, "bio_tagging": True}
@@ -55,10 +44,9 @@ class GroupSequenceLabeler(SequenceLabeler):
         super().__init__(**kwargs)
 
     def _get_input_pipeline(self):
-        return GroupingPipeline(
+        return NestedPipeline(
             config=self.config,
             multi_label=self.config.multi_label_sequences,
-            nested_group_tagging=True
         )
 
     def _predict(
@@ -104,16 +92,27 @@ class GroupSequenceLabeler(SequenceLabeler):
         return list(zip(annotations, all_groups))
 
 
+class PipelinePipeline(GroupingPipeline):
+    def __init__(self, config, multi_label, group=True):
+        super().__init__(config, multi_label)
+        self.group = group
+
+    def _target_encoder(self):
+        return PipelineSequenceLabelingEncoder(pad_token=self.config.pad_token,
+                                               bio_tagging=self.config.bio_tagging,
+                                               group=self.group)
+
 class PipelineSequenceLabeler(SequenceLabeler):
     defaults = {"bio_tagging": True}
-    def __init__(self, **kwargs):
+    def __init__(self, group=True, **kwargs):
+        self.group = group
         super().__init__(**kwargs)
 
     def _get_input_pipeline(self):
-        return GroupingPipeline(
+        return PipelinePipeline(
             config=self.config,
             multi_label=self.config.multi_label_sequences,
-            pipeline_group_tagging=True
+            group=self.group
         )
 
     def _predict(
@@ -125,18 +124,19 @@ class PipelineSequenceLabeler(SequenceLabeler):
         annotations = super()._predict(zipped_data, per_token=per_token,
                                        return_negative_confidence=return_negative_confidence,
                                        **kwargs);
+        if not self.group:
+            return annotations
+
         all_groups = []
         for labels in annotations:
             groups = []
             for label in labels:
                 groups.append({
-                    "tokens": [
-                        {
-                            "start": label["start"],
-                            "end": label["end"],
-                            "text": label["text"],
-                        }
-                    ],
+                    "tokens": [{
+                        "start": label["start"],
+                        "end": label["end"],
+                        "text": label["text"],
+                    }],
                     "label": None
                 })
             all_groups.append(groups)
