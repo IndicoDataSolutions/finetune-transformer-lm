@@ -340,9 +340,9 @@ class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
 
     def fit(self, labels):
         if not self.group:
+            labels, groups = list(zip(*labels))
             super().fit(labels)
         else:
-            labels, groups = list(zip(*labels))
             self.classes_ = [self.pad_token]
             if self.bio_tagging:
                 self.classes_.extend(("B-GROUP", "I-GROUP"))
