@@ -271,16 +271,6 @@ class SequenceLabelingEncoder(BaseEncoder):
         return [self.classes_[l] for l in y]
 
 def is_continuous(group):
-    # group_tokens = group["tokens"]
-    # group_tokens = sorted(group_tokens, key=lambda x: x["start"])
-    # end = group_tokens[0]["end"]
-    # for word in group_tokens[1:]:
-    #     if word["start"] == end + 1 or word["start"] == end:
-    #         end = word["end"]
-    #     else:
-    #         return False
-    # return True
-
     # If there is only a single span, the group is continuous
     return len(group["tokens"]) == 1
 
@@ -325,6 +315,53 @@ class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
         for label in labels:
             del label["group_start"]
         return ret
+
+class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
+    def __init__(self, pad_token, bio_tagging=True):
+        super().__init__(pad_token, bio_tagging=bio_tagging, group_tagging=True)
+
+    def fit(self, labels):
+        labels, groups = list(zip(*labels))
+        super().fit(labels)
+
+        self.label_classes_ = self.classes_
+        self.label_lookup = self.lookup
+
+        self.group_classes_ = ["", "BG-", "IG-"]
+        self.group_lookup = {c: i for i, c in enumerate(self.group_classes_)}
+        
+    def transform(self, out, labels):
+        labels, groups = labels
+        group_labels = []
+        for group in groups:
+            if not is_continuous(group):
+                continue
+            group_start = min([t["start"] for t in group["tokens"]])
+            group_end = max([t["end"] for t in group["tokens"]])
+            group_text = " ".join([t["text"] for t in group["tokens"]])
+            group_labels.append({
+                "start": group_start,
+                "end": group_end,
+                "label": "",
+                "text": group_text,
+                "group_start": True,
+            })
+        self.classes_ = self.group_classes_
+        self.lookup = self.group_lookup
+        encoded_group_labels =  super().transform(out, group_labels)
+
+        self.classes_ = self.label_classes_
+        self.lookup = self.label_lookup
+        encoded_labels =  super().transform(out, labels)
+
+        return [encoded_labels, encoded_group_labels]
+
+    def inverse_transform(self, y):
+        labels, group_labels = y
+        labels = [self.label_classes_[l] for l in labels]
+        group_labels = [self.group_label_classes_[l] for l in group_labels]
+        return [pre + tag for pre, tag in zip(group_labels, labels)]
+
 
 class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
     """

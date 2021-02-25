@@ -569,6 +569,146 @@ def sequence_labeler(
             },
         }
 
+def multi_crf_group_labeler(
+    hidden,
+    targets,
+    n_targets,
+    config,
+    pad_id,
+    train=False,
+    reuse=None,
+    lengths=None,
+    use_crf=False,
+    **kwargs
+):
+    """
+    Multi CRF group tagging model. Takes two sets of targets - one for normal
+    tagging and one for group tagging. Learns a CRF for each set of targets
+
+    :param hidden: The output of the featurizer. [batch_size, sequence_length, embed_dim]
+    :param targets: The placeholder representing the sequence labeling targets. [batch_size, 2, sequence_length]
+    :param n_targets: A python int containing the number of classes that the model should be learning to predict over.
+    :param config: A config object, containing all parameters for the featurizer.
+    :param train: If this flag is true, dropout and losses are added to the graph.
+    :param reuse: Should reuse be set within this scope.
+    :param lengths: The number of non-padding tokens in the input.
+    :param kwargs: Spare arguments.
+    :return: dict containing:
+        "logits": The un-normalised log probabilities of each class being in each location. For usable predictions,
+            sampling from this distribution is not sufficient and a viterbi decoding method should be used.
+        "losses": The negative log likelihood for the sequence targets.
+        "predict_params": A dictionary of params to be fed to the viterbi decode function.
+    """
+    with tf.compat.v1.variable_scope("multi-crf-group", reuse=reuse):
+
+        if targets is not None:
+            targets = tf.cast(targets, dtype=tf.int32)
+
+        nx = config.n_embed
+
+        def seq_lab_internal(hidden):
+            flat_logits = tf.compat.v1.layers.dense(hidden, n_targets)
+            logits = tf.reshape(
+                flat_logits, tf.concat([tf.shape(input=hidden)[:2], [n_targets]], 0)
+            )
+            return logits
+
+        def group_seq_lab_internal(hidden):
+            flat_logits = tf.compat.v1.layers.dense(hidden, 3)
+            logits = tf.reshape(
+                flat_logits, tf.concat([tf.shape(input=hidden)[:2], [3]], 0)
+            )
+            return logits
+
+        with tf.compat.v1.variable_scope("seq_lab_attn"):
+            if config.low_memory_mode and train:
+                seq_lab_internal = recompute_grad(
+                    seq_lab_internal, use_entire_scope=True
+                )
+                group_seq_lab_internal = recompute_grad(
+                    group_seq_lab_internal, use_entire_scope=True
+                )
+            logits = seq_lab_internal(hidden)
+            logits = tf.cast(logits, tf.float32)  # always run the crf in float32
+            group_logits = group_seq_lab_internal(hidden)
+            group_logits = tf.cast(logits, tf.float32)
+
+        loss = 0.0
+
+        default_lengths = tf.shape(input=hidden)[1] * tf.ones(
+            tf.shape(input=hidden)[0], dtype=tf.int32
+        )
+        if lengths is None:
+            lengths = default_lengths
+
+        class_weights = kwargs.get("class_weights")
+
+        with tf.device("CPU:0" if train else logits.device):
+            if class_weights is not None and train:
+                class_weights = tf.reshape(class_weights, [1, 1, -1])
+                one_hot_class_weights = class_weights * tf.one_hot(
+                    targets, depth=n_targets
+                )
+                per_token_weights = tf.reduce_sum(
+                    input_tensor=one_hot_class_weights, axis=-1, keepdims=True
+                )
+                logits = class_reweighted_grad(logits, per_token_weights)
+
+            transition_params = tf.cast(
+                tf.compat.v1.get_variable(
+                    "Transition_matrix", shape=[n_targets, n_targets]
+                ),
+                tf.float32,
+            )
+            group_transition_params = tf.cast(
+                tf.compat.v1.get_variable(
+                    "Group_transition_matrix", shape=[3, 3]
+                ),
+                tf.float32,
+            )
+            if targets is not None:
+                if use_crf:
+                    log_likelihood, _ = crf_log_likelihood(
+                        logits,
+                        targets[:, 0, :],
+                        lengths,
+                        transition_params=transition_params,
+                    )
+                    group_log_likelihood, _ = crf_log_likelihood(
+                        group_logits,
+                        targets[:, 1, :],
+                        lengths,
+                        transition_params=group_transition_params,
+                    )
+                    loss = -(log_likelihood + group_log_likelihood)
+                else:
+                    weights = tf.math.divide_no_nan(
+                        tf.sequence_mask(
+                            lengths,
+                            maxlen=tf.shape(input=targets)[1],
+                            dtype=tf.float32,
+                        ),
+                        tf.expand_dims(tf.cast(lengths, tf.float32), -1),
+                    )
+                    loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
+                        targets, logits, weights=weights
+                    )
+                    group_loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
+                        targets[:, 1, :], group_logits, weights=weights
+                    )
+                    loss += group_loss
+
+        return {
+            "logits": [logits, group_logits],
+            "losses": loss,
+            "predict_params": {
+                "transition_matrix": transition_params,
+                "group_transition_matrix": group_transition_params,
+                "sequence_length": lengths,
+            },
+        }
+
+
 
 def association(
     hidden, lengths, targets, n_targets, config, train=False, reuse=None, **kwargs
