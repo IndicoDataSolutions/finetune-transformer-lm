@@ -19,6 +19,7 @@ import numpy as np
 from finetune.target_models.grouping import (
     GroupSequenceLabeler,
     PipelineSequenceLabeler,
+    MultiCRFGroupSequenceLabeler,
 )
 
 class TestGroupingLabelers(unittest.TestCase):
@@ -56,7 +57,43 @@ class TestGroupingLabelers(unittest.TestCase):
         for p in preds[0]:
             del p["confidence"]
 
-        self.assertEquals(preds, labels)
+        self.assertEqual(preds, labels)
+
+    def test_multi_crf_tagging(self):
+        model = MultiCRFGroupSequenceLabeler(crf_sequence_labeling=True)
+        text = ("five percent (5%) \n " +
+                "fifty percent (50%) \n " +
+                "two percent (2%) \n " +
+                "nine percent (9%) \n " +
+                "three percent (3%) \n ")
+        labels = [
+            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
+        ]
+        groups = [
+            {'tokens': [
+                {'start': 0, 'end': 39, 'text': 'five percent (5%) \n fifty percent (50%)'},
+            ], 'label': None},
+            {'tokens': [
+                {'start': 61, 'end': 99, 'text': 'nine percent (9%) \n three percent (3%)'},
+            ], 'label': None}
+        ]
+        labels = (labels, groups)
+
+        model.fit([text] * 30, [labels] * 30)
+        preds = model.predict([text])[0]
+
+        self.assertEqual(len(preds), 2)
+        self.assertEqual(len(preds[0]), 5)
+        self.assertEqual(len(preds[1]), 2)
+
+        for p in preds[0]:
+            del p["confidence"]
+
+        self.assertEqual(preds, labels)
 
     def test_pipeline_tagging(self):
         model = PipelineSequenceLabeler()
@@ -84,4 +121,4 @@ class TestGroupingLabelers(unittest.TestCase):
         model.fit([text] * 30, [labels] * 30)
         preds = model.predict([text])[0]
         self.assertEqual(len(preds), 2)
-        self.assertEquals(preds, labels[1])
+        self.assertEqual(preds, labels[1])
