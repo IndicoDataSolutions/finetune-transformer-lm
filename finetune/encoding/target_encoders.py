@@ -229,6 +229,7 @@ class SequenceLabelingEncoder(BaseEncoder):
         bio_pre, group_pre = None, None
         for label in labels:
             current_tag = label["label"]
+            current_label = current_tag
 
             if self.bio_tagging or self.group_tagging:
                 bio_pre, group_pre = "", ""
