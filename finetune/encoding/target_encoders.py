@@ -362,9 +362,11 @@ class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
 
         return [encoded_labels, encoded_group_labels]
 
-    def inverse_transform(self, y):
+    def inverse_transform(self, y, only_labels=False):
         labels, group_labels = y
         labels = [self.label_classes_[l] for l in labels]
+        if only_labels:
+            return labels
         group_labels = [self.group_classes_[l] for l in group_labels]
         # Replace pad tokens with empty prefixes
         group_labels = ["" if l == self.pad_token else l for l in group_labels]

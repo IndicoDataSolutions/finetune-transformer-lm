@@ -24,7 +24,7 @@ from finetune.target_models.grouping import (
 
 class TestGroupingLabelers(unittest.TestCase):
     def test_nested_tagging(self):
-        model = GroupSequenceLabeler()
+        model = GroupSequenceLabeler(class_weights="sqrt")
         text = ("five percent (5%) \n " +
                 "fifty percent (50%) \n " +
                 "two percent (2%) \n " +
@@ -60,7 +60,8 @@ class TestGroupingLabelers(unittest.TestCase):
         self.assertEqual(preds, labels)
 
     def test_multi_crf_tagging(self):
-        model = MultiCRFGroupSequenceLabeler(crf_sequence_labeling=True)
+        model = MultiCRFGroupSequenceLabeler(crf_sequence_labeling=True,
+                                             class_weights="sqrt")
         text = ("five percent (5%) \n " +
                 "fifty percent (50%) \n " +
                 "two percent (2%) \n " +
@@ -96,7 +97,7 @@ class TestGroupingLabelers(unittest.TestCase):
         self.assertEqual(preds, labels)
 
     def test_pipeline_tagging(self):
-        model = PipelineSequenceLabeler()
+        model = PipelineSequenceLabeler(class_weights="sqrt")
         text = ("five percent (5%) \n " +
                 "fifty percent (50%) \n " +
                 "two percent (2%) \n " +

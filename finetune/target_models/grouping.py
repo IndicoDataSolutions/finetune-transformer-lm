@@ -1,5 +1,3 @@
-import itertools
-import copy
 from collections import Counter
 
 import numpy as np
@@ -131,6 +129,15 @@ class MultiCRFGroupSequenceLabeler(GroupSequenceLabeler):
             config=self.config,
             multi_label=self.config.multi_label_sequences,
         )
+
+    def _compute_class_counts(self, encoded_dataset):
+        counter = Counter()
+        for doc, target_arr in encoded_dataset:
+            target_arr = np.asarray(target_arr)
+            decoded_targets = self.label_encoder.inverse_transform(target_arr,
+                                                                   only_labels=True)
+            counter.update(decoded_targets)
+        return counter
 
     def _target_model(
         self,

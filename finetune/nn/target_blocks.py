@@ -649,7 +649,7 @@ def multi_crf_group_labeler(
             if class_weights is not None and train:
                 class_weights = tf.reshape(class_weights, [1, 1, -1])
                 one_hot_class_weights = class_weights * tf.one_hot(
-                    targets, depth=n_targets
+                    targets[:, 0, :], depth=n_targets
                 )
                 per_token_weights = tf.reduce_sum(
                     input_tensor=one_hot_class_weights, axis=-1, keepdims=True
