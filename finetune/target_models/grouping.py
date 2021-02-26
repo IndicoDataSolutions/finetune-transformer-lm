@@ -165,22 +165,33 @@ class MultiCRFGroupSequenceLabeler(GroupSequenceLabeler):
         else:
             use_gpu_op = self.config.use_gpu_crf_predict
 
-        idxs, probas = [], []
-        for l, t_m in zip(logits, (trans_mats, group_trans_mats)):
-            i, p = sequence_decode(
-                l,
-                t_m,
+        with tf.compat.v1.variable_scope("tag_sequence_decode"):
+            idxs, probas = sequence_decode(
+                logits[0],
+                trans_mats,
                 sequence_length,
                 use_gpu_op=False,
                 use_crf=self.config.crf_sequence_labeling,
             )
-            idxs.append(i)
-            probas.append(p)
+        with tf.compat.v1.variable_scope("group_sequence_decode"):
+            group_idxs, group_probas = sequence_decode(
+                logits[1],
+                group_trans_mats,
+                sequence_length,
+                use_gpu_op=False,
+                use_crf=self.config.crf_sequence_labeling,
+            )
 
         # Produces [batch_size, 2, seq_len]
-        idxs = tf.stack(idxs, axis=1)
+        idxs = tf.stack([idxs, group_idxs], axis=1)
 
-        probas = probas[0] * probas[1]
+        # Broadcast probabilities to make [batch, seq_len, n_classes * 3] matrix
+        batch_seq_shape, n_classes = tf.shape(probas)[:2], tf.shape(probas)[-1]
+        final_shape = tf.concat((batch_seq_shape, [n_classes * 3]), 0)
+        # [batch, seq_len, n_classes, 3]
+        probas = tf.expand_dims(probas, 3) * tf.expand_dims(group_probas, 2)
+        # [batch, seq_len, n_classes * 3]
+        probas = tf.reshape(probas, final_shape)
 
         return idxs, probas
 

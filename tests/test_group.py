@@ -31,11 +31,11 @@ class TestGroupingLabelers(unittest.TestCase):
                 "nine percent (9%) \n " +
                 "three percent (3%) \n ")
         labels = [
-            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
-            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
-            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
-            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
-            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
+            {'start': 0, 'end': 17, 'label': 'a', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'b', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'a', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'b', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'a', 'text': 'three percent (3%)'},
         ]
         groups = [
             {'tokens': [
@@ -67,11 +67,11 @@ class TestGroupingLabelers(unittest.TestCase):
                 "nine percent (9%) \n " +
                 "three percent (3%) \n ")
         labels = [
-            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
-            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
-            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
-            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
-            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
+            {'start': 0, 'end': 17, 'label': 'a', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'b', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'a', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'b', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'a', 'text': 'three percent (3%)'},
         ]
         groups = [
             {'tokens': [
@@ -103,11 +103,11 @@ class TestGroupingLabelers(unittest.TestCase):
                 "nine percent (9%) \n " +
                 "three percent (3%) \n ")
         labels = [
-            {'start': 0, 'end': 17, 'label': 'z', 'text': 'five percent (5%)'},
-            {'start': 20, 'end': 39, 'label': 'z', 'text': 'fifty percent (50%)'},
-            {'start': 42, 'end': 58, 'label': 'z', 'text': 'two percent (2%)'},
-            {'start': 61, 'end': 78, 'label': 'z', 'text': 'nine percent (9%)'},
-            {'start': 81, 'end': 99, 'label': 'z', 'text': 'three percent (3%)'},
+            {'start': 0, 'end': 17, 'label': 'a', 'text': 'five percent (5%)'},
+            {'start': 20, 'end': 39, 'label': 'b', 'text': 'fifty percent (50%)'},
+            {'start': 42, 'end': 58, 'label': 'a', 'text': 'two percent (2%)'},
+            {'start': 61, 'end': 78, 'label': 'b', 'text': 'nine percent (9%)'},
+            {'start': 81, 'end': 99, 'label': 'a', 'text': 'three percent (3%)'},
         ]
         groups = [
             {'tokens': [

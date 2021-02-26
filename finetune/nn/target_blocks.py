@@ -625,11 +625,13 @@ def multi_crf_group_labeler(
                 seq_lab_internal = recompute_grad(
                     seq_lab_internal, use_entire_scope=True
                 )
+            logits = seq_lab_internal(hidden)
+            logits = tf.cast(logits, tf.float32)  # always run the crf in float32
+        with tf.compat.v1.variable_scope("group_seq_lab_attn"):
+            if config.low_memory_mode and train:
                 group_seq_lab_internal = recompute_grad(
                     group_seq_lab_internal, use_entire_scope=True
                 )
-            logits = seq_lab_internal(hidden)
-            logits = tf.cast(logits, tf.float32)  # always run the crf in float32
             group_logits = group_seq_lab_internal(hidden)
             group_logits = tf.cast(group_logits, tf.float32)
 
