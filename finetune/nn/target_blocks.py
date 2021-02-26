@@ -631,7 +631,7 @@ def multi_crf_group_labeler(
             logits = seq_lab_internal(hidden)
             logits = tf.cast(logits, tf.float32)  # always run the crf in float32
             group_logits = group_seq_lab_internal(hidden)
-            group_logits = tf.cast(logits, tf.float32)
+            group_logits = tf.cast(group_logits, tf.float32)
 
         loss = 0.0
 

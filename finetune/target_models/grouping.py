@@ -17,6 +17,7 @@ from finetune.encoding.target_encoders import (
     PipelineSequenceLabelingEncoder,
 )
 from finetune.nn.target_blocks import multi_crf_group_labeler
+from finetune.nn.crf import sequence_decode
 
 class GroupingPipeline(SequencePipeline):
     def text_to_tokens_mask(self, X, Y=None, context=None):
@@ -44,6 +45,23 @@ class MultiCRFPipeline(GroupingPipeline):
     def _target_encoder(self):
         return MultiCRFGroupSequenceLabelingEncoder(pad_token=self.config.pad_token,
                                                     bio_tagging=self.config.bio_tagging)
+
+    def feed_shape_type_def(self):
+        TS = tf.TensorShape
+        types = {"tokens": tf.int32}
+        shapes = {"tokens": TS([None])}
+        types, shapes = self._add_context_info_if_present(types, shapes)
+        target_shape = [2, None]
+        return (
+            (
+                types,
+                tf.float32,
+            ),
+            (
+                shapes,
+                TS(target_shape),
+            ),
+        )
 
 class PipelinePipeline(GroupingPipeline):
     def __init__(self, config, multi_label, group=True):
@@ -109,7 +127,7 @@ class GroupSequenceLabeler(SequenceLabeler):
 
 class MultiCRFGroupSequenceLabeler(GroupSequenceLabeler):
     def _get_input_pipeline(self):
-        return MultiCRFGroupPipeline(
+        return MultiCRFPipeline(
             config=self.config,
             multi_label=self.config.multi_label_sequences,
         )

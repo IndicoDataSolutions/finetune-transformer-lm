@@ -327,7 +327,7 @@ class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
         self.label_classes_ = self.classes_
         self.label_lookup = self.lookup
 
-        self.group_classes_ = ["", "BG-", "IG-"]
+        self.group_classes_ = [self.pad_token, "BG-", "IG-"]
         self.group_lookup = {c: i for i, c in enumerate(self.group_classes_)}
         
     def transform(self, out, labels):
@@ -348,10 +348,16 @@ class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
             })
         self.classes_ = self.group_classes_
         self.lookup = self.group_lookup
+        # Group tagging must be on and bio tagging must be off
+        self.group_tagging = True
+        _bio, self.bio_tagging = self.bio_tagging, False
         encoded_group_labels =  super().transform(out, group_labels)
 
         self.classes_ = self.label_classes_
         self.lookup = self.label_lookup
+        # Turn group tagging off for normal NER, and revert bio tagging
+        self.group_tagging = False
+        self.bio_tagging = _bio
         encoded_labels =  super().transform(out, labels)
 
         return [encoded_labels, encoded_group_labels]
@@ -359,7 +365,9 @@ class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
     def inverse_transform(self, y):
         labels, group_labels = y
         labels = [self.label_classes_[l] for l in labels]
-        group_labels = [self.group_label_classes_[l] for l in group_labels]
+        group_labels = [self.group_classes_[l] for l in group_labels]
+        # Replace pad tokens with empty prefixes
+        group_labels = ["" if l == self.pad_token else l for l in group_labels]
         return [pre + tag for pre, tag in zip(group_labels, labels)]
 
 
