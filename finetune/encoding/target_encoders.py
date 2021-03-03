@@ -284,13 +284,10 @@ class GroupSequenceLabelingEncoder(SequenceLabelingEncoder):
         super().fit(labels)
         n_classes = []
         for c in self.classes_:
-            if c != self.pad_token:
-                for pre in ("BG-", "IG-"):
-                    if self.bio_tagging and (pre == "BG-" and c[:2] == "I-"):
-                        # Not possible to start a group in middle of entity
-                        continue
-                    n_classes.append(pre + c)
-        self.classes_.extend(n_classes)
+            n_classes.append(c)
+            n_classes.append("BG-" + c)
+            n_classes.append("IG-" + c)
+        self.classes_ = n_classes
         self.lookup = {c: i for i, c in enumerate(self.classes_)}
         
     def transform(self, out, labels):
@@ -372,7 +369,6 @@ class MultiCRFGroupSequenceLabelingEncoder(SequenceLabelingEncoder):
         # Replace pad tokens with empty prefixes
         group_labels = ["" if l == self.pad_token else l for l in group_labels]
         return [pre + tag for pre, tag in zip(group_labels, labels)]
-
 
 class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
     """

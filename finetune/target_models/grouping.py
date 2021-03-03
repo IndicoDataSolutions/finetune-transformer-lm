@@ -14,7 +14,10 @@ from finetune.encoding.target_encoders import (
     MultiCRFGroupSequenceLabelingEncoder,
     PipelineSequenceLabelingEncoder,
 )
-from finetune.nn.target_blocks import multi_crf_group_labeler
+from finetune.nn.target_blocks import (
+    multi_crf_group_labeler,
+    multi_logit_group_labeler,
+)
 from finetune.nn.crf import sequence_decode
 
 class GroupingPipeline(SequencePipeline):
@@ -201,6 +204,31 @@ class MultiCRFGroupSequenceLabeler(GroupSequenceLabeler):
         probas = tf.reshape(probas, final_shape)
 
         return idxs, probas
+
+class MultiLogitGroupSequenceLabeler(GroupSequenceLabeler):
+    def _target_model(
+        self,
+        *,
+        config,
+        featurizer_state,
+        targets,
+        n_outputs,
+        train=False,
+        reuse=None,
+        **kwargs
+    ):
+        return multi_logit_group_labeler(
+            hidden=featurizer_state["sequence_features"],
+            targets=targets,
+            n_targets=n_outputs,
+            pad_id=config.pad_idx,
+            config=config,
+            train=train,
+            reuse=reuse,
+            lengths=featurizer_state["lengths"],
+            use_crf=self.config.crf_sequence_labeling,
+            **kwargs
+        )
 
 class PipelineSequenceLabeler(SequenceLabeler):
     defaults = {"bio_tagging": True}
