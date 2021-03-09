@@ -414,6 +414,68 @@ class PipelineSequenceLabelingEncoder(SequenceLabelingEncoder):
                 })
         return super().transform(out, labels)
 
+class BROSEncoder(BaseEncoder):
+    def __init__(self, pad_token):
+        self.classes_ = None
+        self.pad_token = pad_token
+        self.lookup = None
+
+    def fit(self, labels):
+        self.classes_ = sorted([self.pad_token, "GROUP"])
+        self.lookup = {c: i for i, c in enumerate(self.classes_)}
+
+    def pre_process_label(self, out, labels):
+        pad_idx = self.lookup[self.pad_token]
+        return labels, pad_idx
+
+    @static_method
+    def group_overlaps(self, group, start, end, text):
+        for span in group["tokens"]:
+            overlap, agree = SequenceLabelingEncoder.overlaps(span, start, end, text)
+            if overlap:
+                return overlap, agree
+        return False, False
+
+    def transform(self, out, labels):
+        labels, groups = labels
+        labels, pad_idx = self.pre_process_label(out, labels)
+        start_token_labels = [pad_idx for _ in out.tokens]
+        next_token_labels = [0 for _ in out.tokens]
+
+        for label in labels:
+            current_tag = "GROUP"
+            prev_idx = None
+            for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
+                if label["end"] < (start + end + 1) // 2:
+                    break
+                overlap, agree = self.group_overlaps(label, start, end, text)
+                if overlap:
+                    if not agree:
+                        raise ValueError("Tokens and labels do not align")
+                    if not prev_idx and start_token_labels[i] != pad_idx:
+                        LOGGER.warning("Overlapping start tokens found!")
+                    if prev_idx and next_token_labels[i] != pad_idx:
+                        LOGGER.warning("Overlapping next tokens found!")
+                    if current_tag not in self.lookup:
+                        LOGGER.warning(
+                            "Attempting to encode unknown labels : {}, ignoring for now but this will likely not "
+                            "result in desirable behaviour. Available labels are {}".format(current_tag, self.lookup.keys())
+                        )
+                    if prev_idx is None:
+                        # Only the first token needs a start token label
+                        start_token_labels[i] = self.lookup[current_tag]
+                        prev_idx = i
+                    elif prev_idx is not None:
+                        # Reserve 0 for no connection, add 1 to all idxs
+                        next_token_labels[prev_idx] = i + 1
+                        prev_idx = i
+
+        return (start_token_labels, next_token_labels)
+
+    def inverse_transform(self, y):
+        # TODO: update when finetune_to_indico is removed
+        return [self.classes_[l] for l in y]
+
 
 class SequenceMultiLabelingEncoder(SequenceLabelingEncoder):
     def transform(self, out, labels):
