@@ -428,8 +428,8 @@ class BROSEncoder(BaseEncoder):
         pad_idx = self.lookup[self.pad_token]
         return labels, pad_idx
 
-    @static_method
-    def group_overlaps(self, group, start, end, text):
+    @staticmethod
+    def group_overlaps(group, start, end, text):
         for span in group["tokens"]:
             overlap, agree = SequenceLabelingEncoder.overlaps(span, start, end, text)
             if overlap:
@@ -442,13 +442,14 @@ class BROSEncoder(BaseEncoder):
         start_token_labels = [pad_idx for _ in out.tokens]
         next_token_labels = [0 for _ in out.tokens]
 
-        for label in labels:
+        for group in groups:
             current_tag = "GROUP"
             prev_idx = None
+            group_end = max([g["end"] for g in group["tokens"]])
             for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
-                if label["end"] < (start + end + 1) // 2:
+                if group_end < (start + end + 1) // 2:
                     break
-                overlap, agree = self.group_overlaps(label, start, end, text)
+                overlap, agree = self.group_overlaps(group, start, end, text)
                 if overlap:
                     if not agree:
                         raise ValueError("Tokens and labels do not align")
