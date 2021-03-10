@@ -847,6 +847,133 @@ def multi_logit_group_labeler (
             },
         }
 
+def bros_decoder(
+    hidden,
+    targets,
+    n_targets,
+    config,
+    pad_id,
+    multilabel=False,
+    train=False,
+    reuse=None,
+    lengths=None,
+    **kwargs
+):
+    """
+    A BROS decoder.
+
+    :param hidden: The output of the featurizer. [batch_size, sequence_length, embed_dim]
+    :param targets: The placeholder representing the targets.  [batch_size, 2, sequence_length]
+    :param n_targets: A python int containing the number of classes that the model should be learning to predict over.
+    :param config: A config object, containing all parameters for the featurizer.
+    :param train: If this flag is true, dropout and losses are added to the graph.
+    :param reuse: Should reuse be set within this scope.
+    :param lengths: The number of non-padding tokens in the input.
+    :param kwargs: Spare arguments.
+    :return: dict containing:
+        "logits": The un-normalised log probabilities of each class being in each location. For usable predictions,
+            sampling from this distribution is not sufficient and a viterbi decoding method should be used.
+        "losses": The negative log likelihood for the sequence targets.
+        "predict_params": A dictionary of params to be fed to the viterbi decode function.
+    """
+    with tf.compat.v1.variable_scope("bros-decoder" reuse=reuse):
+
+        if targets is not None:
+            targets = tf.cast(targets, dtype=tf.int32)
+
+        nx = config.n_embed
+        hidden_size = 64
+
+        def get_out(hidden, n_out):
+            flat_logits = tf.compat.v1.layers.dense(hidden, n_out)
+            logits_shape = tf.concat([tf.shape(hidden)[:2], [n_out]], 0)
+            logits = tf.reshape(flat_logits, logits_shape)
+            return logits
+
+        with tf.compat.v1.variable_scope("start_token_logits"):
+            # [Batch Size, Sequence Length, 2]
+            if config.low_memory_mode and train:
+                get_out = recompute_grad(get_out, use_entire_scope=True)
+            start_token_logits = get_out(hidden, 2)
+            start_token_logits = tf.cast(logits, tf.float32)
+        with tf.compat.v1.variable_scope("start_token_hidden"):
+            if config.low_memory_mode and train:
+                get_out = recompute_grad(get_out, use_entire_scope=True)
+            # [Batch Size, Sequence Length, Hidden Size]
+            start_token_hidden = get_out(hidden, hidden_size)
+            start_token_hidden = tf.cast(next_token_hidden, tf.float32)
+        with tf.compat.v1.variable_scope("next_token_hidden"):
+            if config.low_memory_mode and train:
+                get_out = recompute_grad(get_out, use_entire_scope=True)
+            # [Batch Size, Sequence Length, Hidden Size]
+            next_token_hidden = get_out(hidden, hidden_size)
+            next_token_hidden = tf.cast(next_token_hidden, tf.float32)
+
+            no_next_hidden = tf.cast(
+                tf.compat.v1.get_variable(
+                    "no_next_hidden", shape=[hidden_size]
+                ),
+                tf.float32,
+            )
+            no_next_hidden = tf.reshape(no_next_hidden, (1, 1, hidden_size))
+            no_next_hidden = tf.repeat(no_next_hidden, tf.shape(hidden)[0], axis=0)
+            # [Batch Size, Sequence Length + 1, Hidden Size]
+            # Note: The no relation embedding comes first
+            next_token_hidden = tf.concat((no_next_hidden, next_token_hidden), axis=1)
+        with tf.compat.v1.variable_scope("next_token_logits"):
+            # [Batch Size, Sequence Length, Sequence Legth + 1]
+            next_token_logits = tf.matmul(
+                start_token_hidden,
+                next_token_hidden,
+                transpose_b=True
+            )
+
+        if lengths is None:
+            lengths = tf.shape(input=hidden)[1] * tf.ones(
+                tf.shape(input=hidden)[0], dtype=tf.int32
+            )
+
+        loss = 0.0
+        # class_weights = kwargs.get("class_weights")
+        with tf.device("CPU:0" if train else logits.device):
+            # if class_weights is not None and train:
+            #     class_weights = tf.reshape(class_weights, [1, 1, -1])
+            #     one_hot_class_weights = class_weights * tf.one_hot(
+            #         targets, depth=n_targets
+            #     )
+            #     per_token_weights = tf.reduce_sum(
+            #         input_tensor=one_hot_class_weights, axis=-1, keepdims=True
+            #     )
+            #     logits = class_reweighted_grad(logits, per_token_weights)
+
+            if targets is not None:
+                weights = tf.math.divide_no_nan(
+                    tf.sequence_mask(
+                        lengths,
+                        maxlen=tf.shape(targets)[1],
+                        dtype=tf.float32,
+                    ),
+                    tf.expand_dims(tf.cast(lengths, tf.float32), -1),
+                )
+                start_token_loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
+                    targets[:, 0, :], start_token_logits, weights=weights
+                )
+                next_token_loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
+                    targets[:, 1, :], next_token_logits, weights=weights
+                )
+                loss = start_token_loss + next_token_loss
+
+        return {
+            "logits": {
+                "start_token_logits": start_token_logits,
+                "next_token_logits": next_token_logits,
+            }
+            "losses": loss,
+            "predict_params": {
+                "sequence_length": lengths,
+            },
+        }
+
 
 
 def association(
