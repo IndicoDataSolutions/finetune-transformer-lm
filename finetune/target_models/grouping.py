@@ -362,7 +362,6 @@ class BROSLabeler(SequenceLabeler):
         all_groups = []
         for pred, encoded_tokens, text in zip(pred_iterator, token_gen, text_gen):
             normal_pred = pred[PredictMode.NORMAL]
-            import pdb; pdb.set_trace()
             label_seq = self.input_pipeline.label_encoder.inverse_transform(normal_pred)
             proba_seq = pred[PredictMode.PROBAS]
 
