@@ -122,6 +122,6 @@ def test_BROS_sequence_label():
     print(label_arr)
     print(encoder.classes_)
     input()
-    assert label_arr == ([0, 0, 1, 1, 0, 0, 0, 0], [0, 0, 5, 0, 6, 7, 0, 0])
+    assert label_arr == [[0, 0, 1, 1, 0, 0, 0, 0], [0, 0, 4, 0, 5, 6, 0, 0]]
 
 
