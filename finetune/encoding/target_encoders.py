@@ -467,16 +467,15 @@ class BROSEncoder(BaseEncoder):
                         start_token_labels[i] = self.lookup[current_tag]
                         prev_idx = i
                     elif prev_idx is not None:
-                        # Reserve 0 for no connection, add 1 to all idxs
-                        next_token_labels[prev_idx] = i + 1
+                        next_token_labels[prev_idx] = i
                         prev_idx = i
 
-        return (start_token_labels, next_token_labels)
+        return [start_token_labels, next_token_labels]
 
     def inverse_transform(self, y):
-        # TODO: update when finetune_to_indico is removed
-        return [self.classes_[l] for l in y]
-
+        start_tokens, next_tokens = y
+        start_tokens = [self.classes_[l] for l in start_tokens]
+        return (start_tokens, next_tokens)
 
 class SequenceMultiLabelingEncoder(SequenceLabelingEncoder):
     def transform(self, out, labels):

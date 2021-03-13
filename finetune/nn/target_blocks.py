@@ -687,7 +687,7 @@ def multi_crf_group_labeler(
                     weights = tf.math.divide_no_nan(
                         tf.sequence_mask(
                             lengths,
-                            maxlen=tf.shape(input=targets)[1],
+                            maxlen=tf.shape(input=targets)[2],
                             dtype=tf.float32,
                         ),
                         tf.expand_dims(tf.cast(lengths, tf.float32), -1),
@@ -853,7 +853,6 @@ def bros_decoder(
     n_targets,
     config,
     pad_id,
-    multilabel=False,
     train=False,
     reuse=None,
     lengths=None,
@@ -876,7 +875,7 @@ def bros_decoder(
         "losses": The negative log likelihood for the sequence targets.
         "predict_params": A dictionary of params to be fed to the viterbi decode function.
     """
-    with tf.compat.v1.variable_scope("bros-decoder" reuse=reuse):
+    with tf.compat.v1.variable_scope("bros-decoder", reuse=reuse):
 
         if targets is not None:
             targets = tf.cast(targets, dtype=tf.int32)
@@ -895,13 +894,13 @@ def bros_decoder(
             if config.low_memory_mode and train:
                 get_out = recompute_grad(get_out, use_entire_scope=True)
             start_token_logits = get_out(hidden, 2)
-            start_token_logits = tf.cast(logits, tf.float32)
+            start_token_logits = tf.cast(start_token_logits, tf.float32)
         with tf.compat.v1.variable_scope("start_token_hidden"):
             if config.low_memory_mode and train:
                 get_out = recompute_grad(get_out, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
             start_token_hidden = get_out(hidden, hidden_size)
-            start_token_hidden = tf.cast(next_token_hidden, tf.float32)
+            start_token_hidden = tf.cast(start_token_hidden, tf.float32)
         with tf.compat.v1.variable_scope("next_token_hidden"):
             if config.low_memory_mode and train:
                 get_out = recompute_grad(get_out, use_entire_scope=True)
@@ -935,7 +934,7 @@ def bros_decoder(
 
         loss = 0.0
         # class_weights = kwargs.get("class_weights")
-        with tf.device("CPU:0" if train else logits.device):
+        with tf.device("CPU:0" if train else start_token_logits.device):
             # if class_weights is not None and train:
             #     class_weights = tf.reshape(class_weights, [1, 1, -1])
             #     one_hot_class_weights = class_weights * tf.one_hot(
@@ -950,7 +949,7 @@ def bros_decoder(
                 weights = tf.math.divide_no_nan(
                     tf.sequence_mask(
                         lengths,
-                        maxlen=tf.shape(targets)[1],
+                        maxlen=tf.shape(input=targets)[2],
                         dtype=tf.float32,
                     ),
                     tf.expand_dims(tf.cast(lengths, tf.float32), -1),
@@ -961,13 +960,14 @@ def bros_decoder(
                 next_token_loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
                     targets[:, 1, :], next_token_logits, weights=weights
                 )
+
                 loss = start_token_loss + next_token_loss
 
         return {
             "logits": {
                 "start_token_logits": start_token_logits,
                 "next_token_logits": next_token_logits,
-            }
+            },
             "losses": loss,
             "predict_params": {
                 "sequence_length": lengths,
