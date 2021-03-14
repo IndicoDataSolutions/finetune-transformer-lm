@@ -883,29 +883,34 @@ def bros_decoder(
         nx = config.n_embed
         hidden_size = 64
 
-        def get_out(hidden, n_out):
-            flat_logits = tf.compat.v1.layers.dense(hidden, n_out)
-            logits_shape = tf.concat([tf.shape(hidden)[:2], [n_out]], 0)
+        def get_out_logits(hidden):
+            flat_logits = tf.compat.v1.layers.dense(hidden, 2)
+            logits_shape = tf.concat([tf.shape(hidden)[:2], [2]], 0)
+            logits = tf.reshape(flat_logits, logits_shape)
+            return logits
+        def get_out_hidden(hidden):
+            flat_logits = tf.compat.v1.layers.dense(hidden, hidden_size)
+            logits_shape = tf.concat([tf.shape(hidden)[:2], [hidden_size]], 0)
             logits = tf.reshape(flat_logits, logits_shape)
             return logits
 
         with tf.compat.v1.variable_scope("start_token_logits"):
             # [Batch Size, Sequence Length, 2]
             if config.low_memory_mode and train:
-                get_out = recompute_grad(get_out, use_entire_scope=True)
-            start_token_logits = get_out(hidden, 2)
+                get_out_logits = recompute_grad(get_out_logits, use_entire_scope=True)
+            start_token_logits = get_out_logits(hidden)
             start_token_logits = tf.cast(start_token_logits, tf.float32)
         with tf.compat.v1.variable_scope("start_token_hidden"):
             if config.low_memory_mode and train:
-                get_out = recompute_grad(get_out, use_entire_scope=True)
+                get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
-            start_token_hidden = get_out(hidden, hidden_size)
+            start_token_hidden = get_out_hidden(hidden)
             start_token_hidden = tf.cast(start_token_hidden, tf.float32)
         with tf.compat.v1.variable_scope("next_token_hidden"):
             if config.low_memory_mode and train:
-                get_out = recompute_grad(get_out, use_entire_scope=True)
+                get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
-            next_token_hidden = get_out(hidden, hidden_size)
+            next_token_hidden = get_out_hidden(hidden)
             next_token_hidden = tf.cast(next_token_hidden, tf.float32)
 
             no_next_hidden = tf.cast(
