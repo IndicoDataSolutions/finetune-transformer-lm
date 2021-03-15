@@ -256,6 +256,15 @@ class SequenceLabeler(BaseModel):
     def _predict(
         self, zipped_data, per_token=False, return_negative_confidence=False, **kwargs
     ):
+        predictions = list(self.process_long_sequence(zipped_data, **kwargs))
+        return self._predict_decode(zipped_data, predictions,
+                                    per_token=per_token,
+                                    return_negative_confidence=return_negative_confidence,
+                                    **kwargs)
+
+    def _predict_decode(
+        self, zipped_data, predictions, per_token=False, return_negative_confidence=False, **kwargs
+    ):
         """
         Produces a list of most likely class labels as determined by the fine-tuned model.
 
@@ -280,7 +289,7 @@ class SequenceLabeler(BaseModel):
             proba_seq,
             start,
             end,
-        ) in self.process_long_sequence(zipped_data, **kwargs):
+        ) in predictions:
             if start_of_doc:
                 # if this is the first chunk in a document, start accumulating from scratch
                 doc_subseqs = []

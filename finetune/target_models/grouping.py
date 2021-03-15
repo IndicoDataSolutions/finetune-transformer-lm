@@ -370,33 +370,31 @@ class BROSLabeler(SequenceLabeler):
         raise NotImplementedError
 
     def _predict(self, zipped_data, **kwargs):
-        pred_iterator = self._inference(
-            zipped_data,
-            predict_keys=[PredictMode.PROBAS, PredictMode.NORMAL],
-            chunked_length=0,
-            # list_output=False,
-        )
-        token_gen = (chunk
-                     for d in zipped_data
-                     for chunk in self.input_pipeline._text_to_ids(d["X"]))
-        # TODO: Fix the fact that this breaks with more than 1 chunk per input
-        text_gen = (data.get("raw_text", data["X"]) for data in zipped_data)
+        predictions = list(self.process_long_sequence(zipped_data))
+        return self._predict_decode(zipped_data, predictions, **kwargs)
 
+    def _predict_decode(self, zipped_data, predictions, **kwargs):
+        raw_texts = list(data.get("raw_text", data["X"]) for data in zipped_data)
         all_groups = []
-        for pred, encoded_tokens, text in zip(pred_iterator, token_gen, text_gen):
-            normal_pred = pred[PredictMode.NORMAL]
-            label_seq = self.input_pipeline.label_encoder.inverse_transform(normal_pred)
-            proba_seq = pred[PredictMode.PROBAS]
-
-            token_start_idxs = encoded_tokens.token_starts
-            token_end_idxs = encoded_tokens.token_ends
+        for text_idx, (
+            token_start_idx,
+            token_end_idx,
+            start_of_doc,
+            end_of_doc,
+            label_seq,
+            proba_seq,
+            start,
+            end,
+        ) in enumerate(predictions):
+            assert start_of_doc and end_of_doc, "Chunk found in BROS!"
 
             start_tokens, next_tokens = label_seq
             # start_proba, next_proba = proba_seq
 
+            text = raw_texts[text_idx]
             doc_groups = []
             for i, (label, start_idx, end_idx) in enumerate(zip(
-                start_tokens, token_start_idxs, token_end_idxs
+                start_tokens, token_start_idx, token_end_idx
             )):
                 if label == self.config.pad_token:
                     continue
@@ -414,8 +412,8 @@ class BROSLabeler(SequenceLabeler):
                         warnings.warn("Cylical group found!")
                         break
 
-                    current_start_idx = token_start_idxs[current_idx]
-                    current_end_idx = token_end_idxs[current_idx]
+                    current_start_idx = token_start_idx[current_idx]
+                    current_end_idx = token_end_idx[current_idx]
                     for span in group_spans:
                         if (current_start_idx >= span["end"] and
                             not text[span["end"]:current_start_idx].strip()):
