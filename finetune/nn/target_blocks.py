@@ -1075,23 +1075,17 @@ def token_relation_decoder(
             logits = tf.reshape(flat_logits, logits_shape)
             return logits
 
-        with tf.compat.v1.variable_scope("start_token_hidden"):
+        with tf.compat.v1.variable_scope("token_hidden"):
             if config.low_memory_mode and train:
                 get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
-            start_token_hidden = get_out_hidden(hidden)
-            start_token_hidden = tf.cast(start_token_hidden, tf.float32)
-        with tf.compat.v1.variable_scope("next_token_hidden"):
-            if config.low_memory_mode and train:
-                get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
-            # [Batch Size, Sequence Length, Hidden Size]
-            next_token_hidden = get_out_hidden(hidden)
-            next_token_hidden = tf.cast(next_token_hidden, tf.float32)
+            token_hidden = get_out_hidden(hidden)
+            token_hidden = tf.cast(token_hidden, tf.float32)
         with tf.compat.v1.variable_scope("logits"):
             # [Batch Size, Sequence Length, Sequence Legth]
             logits = tf.matmul(
-                start_token_hidden,
-                next_token_hidden,
+                token_hidden,
+                token_hidden,
                 transpose_b=True
             )
 
