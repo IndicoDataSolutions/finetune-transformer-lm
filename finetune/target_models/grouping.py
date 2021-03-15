@@ -18,12 +18,14 @@ from finetune.encoding.target_encoders import (
     PipelineSequenceLabelingEncoder,
     BROSEncoder,
     JointBROSEncoder,
+    TokenRelationEncoder,
 )
 from finetune.nn.target_blocks import (
     multi_crf_group_labeler,
     multi_logit_group_labeler,
     bros_decoder,
     joint_bros_decoder,
+    token_relation_decoder,
 )
 
 class GroupingPipeline(SequencePipeline):
@@ -113,6 +115,27 @@ class JointBROSPipeline(GroupingPipeline):
         shapes = {"tokens": TS([None])}
         types, shapes = self._add_context_info_if_present(types, shapes)
         target_shape = [3, None]
+        return (
+            (
+                types,
+                tf.float32,
+            ),
+            (
+                shapes,
+                TS(target_shape),
+            ),
+        )
+
+class TokenRelationPipeline(GroupingPipeline):
+    def _target_encoder(self):
+        return TokenRelationEncoder(pad_token=self.config.pad_token)
+
+    def feed_shape_type_def(self):
+        TS = tf.TensorShape
+        types = {"tokens": tf.int32}
+        shapes = {"tokens": TS([None])}
+        types, shapes = self._add_context_info_if_present(types, shapes)
+        target_shape = [2, None, None]
         return (
             (
                 types,
@@ -521,3 +544,119 @@ class JointBROSLabeler(BROSLabeler, SequenceLabeler):
             self, zipped_data, ner_predictions, **kwargs
         )
         return list(zip(ner_predictions, group_predictions))
+
+class TokenRelationLabeler(SequenceLabeler):
+    defaults = {"chunk_long_sequences": False}
+
+    def _get_input_pipeline(self):
+        return TokenRelationPipeline(config=self.config)
+
+    def _target_model(
+        self,
+        *,
+        config,
+        featurizer_state,
+        targets,
+        n_outputs,
+        train=False,
+        reuse=None,
+        **kwargs
+    ):
+        return token_relation_decoder(
+            hidden=featurizer_state["sequence_features"],
+            targets=targets,
+            n_targets=n_outputs,
+            pad_id=config.pad_idx,
+            config=config,
+            train=train,
+            reuse=reuse,
+            lengths=featurizer_state["lengths"],
+            **kwargs
+        )
+
+    def _predict_op(self, logits, **kwargs):
+        probas = tf.sigmoid(logits)
+
+        # This is weird, but the conversion from probabilities to labels has to
+        # happen outside of tf, and we need the mask for the process
+        idxs = kwargs.get("mask")
+
+        return idxs, probas
+
+    def predict(self, X, **kwargs):
+        return super().predict(X, **kwargs)
+
+    def predict_proba(self, X, **kwargs):
+        raise NotImplementedError
+
+    def _predict(self, zipped_data, **kwargs):
+        predictions = list(self.process_long_sequence(zipped_data))
+        return self._predict_decode(zipped_data, predictions, **kwargs)
+
+    def _predict_decode(self, zipped_data, predictions, **kwargs):
+        raw_texts = list(data.get("raw_text", data["X"]) for data in zipped_data)
+        all_groups = []
+        for text_idx, (
+            token_start_idx,
+            token_end_idx,
+            start_of_doc,
+            end_of_doc,
+            label_seq,
+            proba_seq,
+            start,
+            end,
+        ) in enumerate(predictions):
+            assert start_of_doc and end_of_doc, "Chunk found in token relation!!"
+
+            text = raw_texts[text_idx]
+            doc_groups = []
+            for i, (mask, probas, start_idx, end_idx) in enumerate(zip(
+                label_seq, proba_seq, token_start_idx, token_end_idx
+            )):
+                if label == self.config.pad_token:
+                    continue
+
+                group_spans = [{
+                    "start": start_idx,
+                    "end": end_idx,
+                    "text": text[start_idx:end_idx],
+                }] 
+
+                group_idxs = [i]
+                current_idx = next_tokens[i] 
+                while current_idx > 0:
+                    if current_idx in group_idxs:
+                        warnings.warn("Cylical group found!")
+                        break
+
+                    current_start_idx = token_start_idx[current_idx]
+                    current_end_idx = token_end_idx[current_idx]
+                    for span in group_spans:
+                        if (current_start_idx >= span["end"] and
+                            not text[span["end"]:current_start_idx].strip()):
+                            span["end"] = current_end_idx
+                            span["text"] = text[span["start"]:span["end"]]
+                            break
+                        elif (current_end_idx <= span["start"] and
+                              not text[current_end_idx:span["start"]].strip()):
+                            span["start"] = current_start_idx
+                            span["text"] = text[span["start"]:span["end"]]
+                            break
+                    else:
+                        group_spans.append({
+                            "start": current_start_idx,
+                            "end": current_end_idx,
+                            "text": text[current_start_idx:current_end_idx],
+                        })
+
+                    group_idxs.append(current_idx)
+                    current_idx = next_tokens[current_idx]
+                group_spans = sorted(group_spans, key=lambda x: x["start"])
+                doc_groups.append({
+                    "tokens": group_spans,
+                    "label": None,
+                })
+            doc_groups = sorted(doc_groups, key=lambda x: x["tokens"][0]["start"])
+            all_groups.append(doc_groups)
+        return all_groups
+
