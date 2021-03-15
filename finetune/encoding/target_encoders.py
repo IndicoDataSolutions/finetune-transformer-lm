@@ -442,6 +442,7 @@ class BROSEncoder(BaseEncoder):
         next_token_labels = [0 for _ in out.tokens]
 
         for group in groups:
+            # Change this is we ever want to do classification
             current_tag = "GROUP"
             prev_idx = None
             group_end = max([g["end"] for g in group["tokens"]])
@@ -475,6 +476,33 @@ class BROSEncoder(BaseEncoder):
         start_tokens, next_tokens = y
         start_tokens = [self.classes_[l] for l in start_tokens]
         return (start_tokens, next_tokens)
+
+class TokenRelationEncoder(BROSEncoder):
+    def transform(self, out, labels):
+        labels, groups = labels
+        labels, pad_idx = self.pre_process_label(out, labels)
+        encoded_labels = [[pad_idx for _ in out.tokens]
+                          for _ in out.tokens]
+        for group in groups:
+            group_idxs = []
+            for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
+                if group_end < (start + end + 1) // 2:
+                    break
+
+                overlap, agree = self.group_overlaps(group, start, end, text)
+                if overlap:
+                    if not agree:
+                        raise ValueError("Tokens and labels do not align")
+                    group_idxs.append(i)
+
+            for i in group_idxs:
+                for j in group_idxs:
+                    if i == j: continue
+                    encoded_labels[i][j] = 1
+        return encoded_labels
+
+    def inverse_transform(self, y):
+        return y
 
 class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
     def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
