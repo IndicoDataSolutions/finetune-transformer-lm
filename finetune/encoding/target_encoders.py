@@ -511,9 +511,10 @@ class TokenRelationEncoder(BROSEncoder):
                     label_idxs.append(i)
                     break
         for i in label_idxs:
-            for j in range(len(out.tokens)):
+            for j in label_idxs:
+                if i == j:
+                    continue
                 entity_mask[i][j] = 1
-                entity_mask[j][i] = 1
 
         return [entity_mask, encoded_labels]
 
