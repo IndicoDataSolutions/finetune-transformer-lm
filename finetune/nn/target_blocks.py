@@ -979,6 +979,55 @@ def bros_decoder(
             },
         }
 
+def joint_bros_decoder(
+    hidden,
+    targets,
+    n_targets,
+    config,
+    pad_id,
+    train=False,
+    reuse=None,
+    lengths=None,
+    use_crf=True,
+    **kwargs
+):
+    bros_dict = bros_decoder(
+        hidden,
+        targets,
+        n_targets,
+        config,
+        pad_id,
+        train=train,
+        reuse=reuse,
+        lengths=lengths,
+        **kwargs
+    )
+    seq_dict = sequence_labeler(
+        hidden,
+        targets,
+        n_targets,
+        config,
+        pad_id,
+        multilabel=False,
+        train=train,
+        reuse=reuse,
+        lengths=lenghts,
+        use_crf=use_crf,
+        **kwargs
+    )
+    return {
+        "logits": {
+            "ner_logits": seq_dict["logits"],
+            "start_token_logits": bros_dict["logits"]["start_token_logits"],
+            "next_token_logits": bros_dict["logits"]["next_token_logits"],
+        },
+        "losses": bros_dict["loss"] + seq_dict["loss"],
+        "predict_params": {
+            "sequence_length": lengths,
+            "transition_matrix": seq_dict["transition_matrix"],
+        },
+    }
+
 
 
 def association(
