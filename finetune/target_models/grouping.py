@@ -17,11 +17,13 @@ from finetune.encoding.target_encoders import (
     MultiCRFGroupSequenceLabelingEncoder,
     PipelineSequenceLabelingEncoder,
     BROSEncoder,
+    JointBROSEncoder,
 )
 from finetune.nn.target_blocks import (
     multi_crf_group_labeler,
     multi_logit_group_labeler,
     bros_decoder,
+    joint_bros_decoder,
 )
 
 class GroupingPipeline(SequencePipeline):
@@ -89,6 +91,27 @@ class BROSPipeline(GroupingPipeline):
         shapes = {"tokens": TS([None])}
         types, shapes = self._add_context_info_if_present(types, shapes)
         target_shape = [2, None]
+        return (
+            (
+                types,
+                tf.float32,
+            ),
+            (
+                shapes,
+                TS(target_shape),
+            ),
+        )
+
+class JointBROSPipeline(GroupingPipeline):
+    def _target_encoder(self):
+        return JointBROSEncoder(pad_token=self.config.pad_token)
+
+    def feed_shape_type_def(self):
+        TS = tf.TensorShape
+        types = {"tokens": tf.int32}
+        shapes = {"tokens": TS([None])}
+        types, shapes = self._add_context_info_if_present(types, shapes)
+        target_shape = [3, None]
         return (
             (
                 types,
@@ -421,3 +444,77 @@ class BROSLabeler(SequenceLabeler):
             doc_groups = sorted(doc_groups, key=lambda x: x["tokens"][0]["start"])
             all_groups.append(doc_groups)
         return all_groups
+
+class JointBROSLabeler(SequenceLabeler):
+    defaults = {"chunk_long_sequences": False}
+
+    def _get_input_pipeline(self):
+        return JointBROSPipeline(config=self.config)
+
+    def _target_model(
+        self,
+        *,
+        config,
+        featurizer_state,
+        targets,
+        n_outputs,
+        train=False,
+        reuse=None,
+        **kwargs
+    ):
+        return joint_bros_decoder(
+            hidden=featurizer_state["sequence_features"],
+            targets=targets,
+            n_targets=n_outputs,
+            pad_id=config.pad_idx,
+            config=config,
+            train=train,
+            reuse=reuse,
+            lengths=featurizer_state["lengths"],
+            use_crf=self.config.crf_sequence_labeling,
+            **kwargs
+        )
+
+    def _predict_op(self, logits, **kwargs):
+        ner_logits = logits["ner_logits"]
+        trans_mats = kwargs.get("transition_matrix")
+        sequence_length = kwargs.get("sequence_length")
+        if self.config.use_gpu_crf_predict.lower() == "auto":
+            use_gpu_op = False
+        else:
+            use_gpu_op = self.config.use_gpu_crf_predict
+        with tf.compat.v1.variable_scope("sequence_decode"):
+            ner_idxs, ner_probas = sequence_decode(
+                ner_logits,
+                trans_mats,
+                sequence_length,
+                use_gpu_op=False,
+                use_crf=self.config.crf_sequence_labeling,
+            )
+
+        # [Batch Size, Sequence Length, 2]
+        start_token_logits = logits["start_token_logits"]
+        start_token_idxs = tf.argmax(start_token_logits, axis=-1)
+        start_token_probas = tf.nn.softmax(start_token_logits, axis=-1)
+
+        # [Batch Size, Sequence Length, Sequence Length + 1]
+        next_token_logits = logits["next_token_logits"]
+        next_token_idxs = tf.argmax(next_token_logits, axis=-1)
+        next_token_probas = tf.nn.softmax(next_token_logits, axis=-1)
+
+        # idxs = (start_token_idxs, next_token_idxs)
+
+        # Produces [batch_size, 3, seq_len]
+        idxs = tf.stack([ner_idxs, start_token_idxs, next_token_idxs], axis=1)
+        probas = ner_probas
+
+        return idxs, probas
+
+    def predict(self, X, **kwargs):
+        return super().predict(X, **kwargs)
+
+    def predict_proba(self, X, **kwargs):
+        raise NotImplementedError
+
+    def _predict(self, zipped_data, **kwargs):
+        raise NotImplementedError
