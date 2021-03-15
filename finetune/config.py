@@ -336,6 +336,7 @@ def get_default_config():
         #
         # Line Items
         group_bio_tagging=False,
+        relation_hidden_size=256,
         # Serialize finetune version with model
         version=VERSION,
     )

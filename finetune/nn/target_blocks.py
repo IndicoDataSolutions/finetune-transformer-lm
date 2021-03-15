@@ -881,7 +881,7 @@ def bros_decoder(
             targets = tf.cast(targets, dtype=tf.int32)
 
         nx = config.n_embed
-        hidden_size = 256
+        hidden_size = config.relation_hidden_size
 
         def get_out_logits(hidden):
             flat_logits = tf.compat.v1.layers.dense(hidden, 2)
@@ -906,7 +906,8 @@ def bros_decoder(
             # [Batch Size, Sequence Length, Hidden Size]
             start_token_hidden = get_out_hidden(hidden)
             start_token_hidden = tf.cast(start_token_hidden, tf.float32)
-        with tf.compat.v1.variable_scope("next_token_hidden"): if config.low_memory_mode and train:
+        with tf.compat.v1.variable_scope("next_token_hidden"):
+            if config.low_memory_mode and train:
                 get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
             next_token_hidden = get_out_hidden(hidden)
