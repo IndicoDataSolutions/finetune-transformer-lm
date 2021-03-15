@@ -164,7 +164,7 @@ class TestGroupingLabelers(unittest.TestCase):
         self.assertEqual(preds, labels[1])
 
     def test_bros_tagging(self):
-        model = BROSLabeler()
+        model = BROSLabeler(n_epochs=16)
         text = ("five percent (5%) \n " +
                 "fifty percent (50%) \n " +
                 "two percent (2%) \n " +
