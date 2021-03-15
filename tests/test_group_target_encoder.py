@@ -7,6 +7,7 @@ from finetune.encoding.target_encoders import (
     MultiCRFGroupSequenceLabelingEncoder,
     BROSEncoder,
     JointBROSEncoder,
+    TokenRelationEncoder,
 )
 
 def test_nest_group_sequence_label():
@@ -163,5 +164,52 @@ def test_joint_BROS_sequence_label():
         [0, 1, 1, 2, 1, 2, 2, 0],
         [0, 0, 1, 1, 0, 0, 0, 0],
         [0, 0, 4, 0, 5, 6, 0, 0]
+    ]
+
+def test_token_relation_sequence_label():
+    encoder = TokenRelationEncoder(pad_token="<PAD>")
+    labels = [
+        {'start': 0, 'end': 4, 'label': 'z', 'text': 'five'},
+        {'start': 13, 'end': 17, 'label': 'z', 'text': '(5%)'},
+    ]
+    groups = [
+        {'tokens': [
+            {'start': 0, 'end': 4, 'text': 'five'},
+            {'start': 15, 'end': 17, 'text': '%)'},
+        ], 'label': None},
+        {'tokens': [
+            {'start': 13, 'end': 15, 'text': '(5'},
+        ], 'label': None}
+    ]
+    label = (labels, groups)
+    encoder.fit([label])
+    out = EncodedOutput(
+        token_ids=np.array([   0, 9583,  139,   40,  249, 8875,    2]), 
+        tokens=np.array(['0', 'five', ' per', 'cent', ' (', '5', '%)', '2'], dtype='<U21'), 
+        token_ends=np.array([-1,  4, 8, 12, 14, 15, 17, -1]), 
+        token_starts=np.array([-1,  0,  5, 8, 13, 14, 15, -1]), 
+        useful_start=0, 
+        useful_end=512
+    )
+    label_arr = encoder.transform(out, label)
+    print(label_arr)
+    input()
+    assert label_arr == [
+        [[0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 1, 0, 0, 0, 1, 1, 0],
+         [0, 1, 0, 0, 1, 0, 1, 0],
+         [0, 1, 0, 0, 1, 1, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0]],
+        [[0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 1, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 1, 0, 0],
+         [0, 0, 0, 0, 1, 0, 0, 0],
+         [0, 1, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0]],
     ]
 
