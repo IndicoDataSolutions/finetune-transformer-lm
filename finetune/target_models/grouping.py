@@ -104,7 +104,8 @@ class BROSPipeline(GroupingPipeline):
 
 class JointBROSPipeline(GroupingPipeline):
     def _target_encoder(self):
-        return JointBROSEncoder(pad_token=self.config.pad_token)
+        return JointBROSEncoder(pad_token=self.config.pad_token,
+                                bio_tagging=self.config.bio_tagging)
 
     def feed_shape_type_def(self):
         TS = tf.TensorShape
@@ -297,7 +298,9 @@ class PipelineSequenceLabeler(SequenceLabeler):
         annotations = super()._predict(zipped_data, per_token=per_token,
                                        return_negative_confidence=return_negative_confidence,
                                        **kwargs);
+        # TODO: Fix this breakig when loading from model
         if not self.group:
+        # if not True:
             return annotations
 
         all_groups = []
@@ -443,7 +446,7 @@ class BROSLabeler(SequenceLabeler):
             all_groups.append(doc_groups)
         return all_groups
 
-class JointBROSLabeler(SequenceLabeler):
+class JointBROSLabeler(BROSLabeler, SequenceLabeler):
     defaults = {"chunk_long_sequences": False}
 
     def _get_input_pipeline(self):
@@ -474,33 +477,16 @@ class JointBROSLabeler(SequenceLabeler):
         )
 
     def _predict_op(self, logits, **kwargs):
-        ner_logits = logits["ner_logits"]
-        trans_mats = kwargs.get("transition_matrix")
-        sequence_length = kwargs.get("sequence_length")
-        if self.config.use_gpu_crf_predict.lower() == "auto":
-            use_gpu_op = False
-        else:
-            use_gpu_op = self.config.use_gpu_crf_predict
-        with tf.compat.v1.variable_scope("sequence_decode"):
-            ner_idxs, ner_probas = sequence_decode(
-                ner_logits,
-                trans_mats,
-                sequence_length,
-                use_gpu_op=False,
-                use_crf=self.config.crf_sequence_labeling,
-            )
+        group_idxs, group_probas = BROSLabeler._predict_op(
+            self, logits, **kwargs
+        )
+        ner_idxs, ner_probas = SequenceLabeler._predict_op(
+            self, logits["ner_logits"], **kwargs
+        )
 
-        # [Batch Size, Sequence Length, 2]
-        start_token_logits = logits["start_token_logits"]
-        start_token_idxs = tf.argmax(start_token_logits, axis=-1)
-        start_token_probas = tf.nn.softmax(start_token_logits, axis=-1)
-
-        # [Batch Size, Sequence Length, Sequence Length + 1]
-        next_token_logits = logits["next_token_logits"]
-        next_token_idxs = tf.argmax(next_token_logits, axis=-1)
-        next_token_probas = tf.nn.softmax(next_token_logits, axis=-1)
-
-        # idxs = (start_token_idxs, next_token_idxs)
+        # Check why this is neccesary
+        group_idxs = tf.cast(group_idxs, tf.int32)
+        start_token_idxs, next_token_idxs = group_idxs[:, 0, :], group_idxs[:, 1, :]
 
         # Produces [batch_size, 3, seq_len]
         idxs = tf.stack([ner_idxs, start_token_idxs, next_token_idxs], axis=1)
@@ -515,4 +501,23 @@ class JointBROSLabeler(SequenceLabeler):
         raise NotImplementedError
 
     def _predict(self, zipped_data, **kwargs):
-        raise NotImplementedError
+        # This is somewhat horrifying
+        predictions = list(self.process_long_sequence(zipped_data))
+        (token_start_idx, token_end_idx, start_of_doc, end_of_doc, label_seq,
+         proba_seq, start, end) = list(zip(*predictions))
+        ner_labels, start_token_labels, next_token_labels = list(zip(*label_seq))
+
+        group_labels = list(zip(start_token_labels, next_token_labels))
+        group_predictions = zip(token_start_idx, token_end_idx, start_of_doc,
+                              end_of_doc, group_labels, proba_seq, start, end)
+        ner_predictions = zip(token_start_idx, token_end_idx, start_of_doc,
+                              end_of_doc, ner_labels, proba_seq, start, end)
+
+
+        group_predictions = BROSLabeler._predict_decode(
+            self, zipped_data, group_predictions, **kwargs
+        )
+        ner_predictions = SequenceLabeler._predict_decode(
+            self, zipped_data, ner_predictions, **kwargs
+        )
+        return list(zip(ner_predictions, group_predictions))

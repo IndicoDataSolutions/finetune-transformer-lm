@@ -522,25 +522,28 @@ class TokenRelationEncoder(BROSEncoder):
 
 class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
     def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
-        super(SequenceLabelingEncoder).__init__(pad_token,
-                                                bio_tagging=bio_tagging,
-                                                group_tagging=group_tagging)
+        # Can potentially replace these direct calls with super()s, but seems
+        # like it'll be hard to maintain so leaving as is for now
+        SequenceLabelingEncoder.__init__(self, pad_token,
+                                         bio_tagging=bio_tagging,
+                                         group_tagging=group_tagging)
 
     def fit(self, labels):
-        super(BROSEncoder).fit(self, labels)
+        labels, groups = list(zip(*labels))
+        BROSEncoder.fit(self, labels)
         self.group_classes_, self.group_lookup = self.classes_, self.lookup
-        super(SequenceLabelingEncoder).fit(self, labels)
-        self.ner_classes, self.ner_lookup = self.classes_, self.lookup
+        SequenceLabelingEncoder.fit(self, labels)
+        self.ner_classes_, self.ner_lookup = self.classes_, self.lookup
 
     def transform(self, out, labels):
         labels, groups = labels
 
         self.classes_, self.lookup = self.group_classes_, self.group_lookup
-        group_labels = super(BROSEncoder).transform(out, (labels, groups))
+        group_labels = BROSEncoder.transform(self, out, (labels, groups))
         start_token_labels, next_token_labels = group_labels
 
         self.classes_, self.lookup = self.ner_classes_, self.ner_lookup
-        ner_labels = super(SequenceLabelingEncoder).transform(out, labels)
+        ner_labels = SequenceLabelingEncoder.transform(self, out, labels)
 
         return [ner_labels, start_token_labels, next_token_labels]
 
@@ -548,11 +551,11 @@ class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
         tags, start_tokens, next_tokens = y
 
         self.classes_, self.lookup = self.group_classes_, self.group_lookup
-        group_tags = super(BROSEncoder).inverse_transform((start_token, next_tokens))
+        group_tags = BROSEncoder.inverse_transform(self, (start_tokens, next_tokens))
         start_tokens, next_tokens = group_tags
 
         self.classes_, self.lookup = self.ner_classes_, self.ner_lookup
-        tags = super(SequenceLabelingEncoder).inverse_transform(tags)
+        tags = SequenceLabelingEncoder.inverse_transform(self, tags)
 
         return (tags, start_tokens, next_tokens)
 

@@ -991,9 +991,14 @@ def joint_bros_decoder(
     use_crf=True,
     **kwargs
 ):
+    bros_targets, seq_targets = None, None
+    if targets is not None:
+        bros_targets = targets[:, 1:, :]
+        seq_targets = targets[:, 0, :]
+        
     bros_dict = bros_decoder(
         hidden,
-        targets,
+        bros_targets,
         n_targets,
         config,
         pad_id,
@@ -1004,14 +1009,14 @@ def joint_bros_decoder(
     )
     seq_dict = sequence_labeler(
         hidden,
-        targets,
+        seq_targets,
         n_targets,
         config,
         pad_id,
         multilabel=False,
         train=train,
         reuse=reuse,
-        lengths=lenghts,
+        lengths=lengths,
         use_crf=use_crf,
         **kwargs
     )
@@ -1021,10 +1026,10 @@ def joint_bros_decoder(
             "start_token_logits": bros_dict["logits"]["start_token_logits"],
             "next_token_logits": bros_dict["logits"]["next_token_logits"],
         },
-        "losses": bros_dict["loss"] + seq_dict["loss"],
+        "losses": bros_dict["losses"] + seq_dict["losses"],
         "predict_params": {
             "sequence_length": lengths,
-            "transition_matrix": seq_dict["transition_matrix"],
+            "transition_matrix": seq_dict["predict_params"]["transition_matrix"],
         },
     }
 
