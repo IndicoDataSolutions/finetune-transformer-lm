@@ -881,7 +881,7 @@ def bros_decoder(
             targets = tf.cast(targets, dtype=tf.int32)
 
         nx = config.n_embed
-        hidden_size = 64
+        hidden_size = 256
 
         def get_out_logits(hidden):
             flat_logits = tf.compat.v1.layers.dense(hidden, 2)
@@ -906,8 +906,7 @@ def bros_decoder(
             # [Batch Size, Sequence Length, Hidden Size]
             start_token_hidden = get_out_hidden(hidden)
             start_token_hidden = tf.cast(start_token_hidden, tf.float32)
-        with tf.compat.v1.variable_scope("next_token_hidden"):
-            if config.low_memory_mode and train:
+        with tf.compat.v1.variable_scope("next_token_hidden"): if config.low_memory_mode and train:
                 get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
             # [Batch Size, Sequence Length, Hidden Size]
             next_token_hidden = get_out_hidden(hidden)
@@ -1028,7 +1027,94 @@ def joint_bros_decoder(
         },
     }
 
+def token_relation_decoder(
+    hidden,
+    targets,
+    n_targets,
+    config,
+    pad_id,
+    train=False,
+    reuse=None,
+    lengths=None,
+    **kwargs
+):
+    """
+    A token level relation decoder.
 
+    :param hidden: The output of the featurizer. [batch_size, sequence_length, embed_dim]
+    :param targets: The placeholder representing the targets.  [batch_size, 2, sequence_length]
+    :param n_targets: A python int containing the number of classes that the model should be learning to predict over.
+    :param config: A config object, containing all parameters for the featurizer.
+    :param train: If this flag is true, dropout and losses are added to the graph.
+    :param reuse: Should reuse be set within this scope.
+    :param lengths: The number of non-padding tokens in the input.
+    :param kwargs: Spare arguments.
+    :return: dict containing:
+        "logits": The un-normalised log probabilities of each class being in each location. For usable predictions,
+            sampling from this distribution is not sufficient and a viterbi decoding method should be used.
+        "losses": The negative log likelihood for the sequence targets.
+        "predict_params": A dictionary of params to be fed to the viterbi decode function.
+    """
+    with tf.compat.v1.variable_scope("token-relation-decoder", reuse=reuse):
+
+        if targets is not None:
+            targets = tf.cast(targets, dtype=tf.int32)
+
+        nx = config.n_embed
+        hidden_size = 256
+
+        def get_out_hidden(hidden):
+            flat_logits = tf.compat.v1.layers.dense(hidden, hidden_size)
+            logits_shape = tf.concat([tf.shape(hidden)[:2], [hidden_size]], 0)
+            logits = tf.reshape(flat_logits, logits_shape)
+            return logits
+
+        with tf.compat.v1.variable_scope("start_token_hidden"):
+            if config.low_memory_mode and train:
+                get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
+            # [Batch Size, Sequence Length, Hidden Size]
+            start_token_hidden = get_out_hidden(hidden)
+            start_token_hidden = tf.cast(start_token_hidden, tf.float32)
+        with tf.compat.v1.variable_scope("next_token_hidden"):
+            if config.low_memory_mode and train:
+                get_out_hidden = recompute_grad(get_out_hidden, use_entire_scope=True)
+            # [Batch Size, Sequence Length, Hidden Size]
+            next_token_hidden = get_out_hidden(hidden)
+            next_token_hidden = tf.cast(next_token_hidden, tf.float32)
+        with tf.compat.v1.variable_scope("logits"):
+            # [Batch Size, Sequence Length, Sequence Legth]
+            logits = tf.matmul(
+                start_token_hidden,
+                next_token_hidden,
+                transpose_b=True
+            )
+
+        if lengths is None:
+            lengths = tf.shape(input=hidden)[1] * tf.ones(
+                tf.shape(input=hidden)[0], dtype=tf.int32
+            )
+
+        loss = 0.0
+        with tf.device("CPU:0" if train else logits.device):
+            if targets is not None:
+                weights = tf.math.divide_no_nan(
+                    tf.sequence_mask(
+                        lengths,
+                        maxlen=tf.shape(input=targets)[1],
+                        dtype=tf.float32,
+                    ),
+                    tf.expand_dims(tf.cast(lengths, tf.float32), -1),
+                )
+                bce = tf.keras.losses.BinaryCrossentropy()
+                loss = bce(targets, logits, sample_weight=weights)
+
+        return {
+            "logits": logits,
+            "losses": loss,
+            "predict_params": {
+                "sequence_length": lengths,
+            },
+        }
 
 def association(
     hidden, lengths, targets, n_targets, config, train=False, reuse=None, **kwargs
