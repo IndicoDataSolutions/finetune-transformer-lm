@@ -483,23 +483,39 @@ class TokenRelationEncoder(BROSEncoder):
         labels, pad_idx = self.pre_process_label(out, labels)
         encoded_labels = [[pad_idx for _ in out.tokens]
                           for _ in out.tokens]
+        entity_mask = [[pad_idx for _ in out.tokens]
+                       for _ in out.tokens]
         for group in groups:
             group_idxs = []
+            group_end = max([g["end"] for g in group["tokens"]])
             for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
                 if group_end < (start + end + 1) // 2:
                     break
-
                 overlap, agree = self.group_overlaps(group, start, end, text)
                 if overlap:
                     if not agree:
-                        raise ValueError("Tokens and labels do not align")
+                        raise ValueError("Tokens and groups do not align")
                     group_idxs.append(i)
-
             for i in group_idxs:
                 for j in group_idxs:
                     if i == j: continue
                     encoded_labels[i][j] = 1
-        return encoded_labels
+
+        label_idxs = []
+        for i, (start, end, text) in enumerate(zip(out.token_starts, out.token_ends, out.tokens)):
+            for label in labels:
+                overlap, agree = SequenceLabelingEncoder.overlaps(label, start, end, text)
+                if overlap:
+                    if not agree:
+                        raise ValueError("Tokens and labels do not align")
+                    label_idxs.append(i)
+                    break
+        for i in label_idxs:
+            for j in range(len(out.tokens)):
+                entity_mask[i][j] = 1
+                entity_mask[j][i] = 1
+
+        return [entity_mask, encoded_labels]
 
     def inverse_transform(self, y):
         return y
