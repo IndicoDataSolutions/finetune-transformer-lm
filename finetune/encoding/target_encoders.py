@@ -184,7 +184,6 @@ class OrdinalRegressionEncoder(OrdinalEncoder, BaseEncoder):
         raise ValueError
 
 class SequenceLabelingEncoder(BaseEncoder):
-
     def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
         self.classes_ = None
         self.pad_token = pad_token
@@ -476,6 +475,42 @@ class BROSEncoder(BaseEncoder):
         start_tokens, next_tokens = y
         start_tokens = [self.classes_[l] for l in start_tokens]
         return (start_tokens, next_tokens)
+
+class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
+    def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
+        super(SequenceLabelingEncoder).__init__(pad_token,
+                                                bio_tagging=bio_tagging,
+                                                group_tagging=group_tagging)
+
+    def fit(self, labels):
+        super(BROSEncoder).fit(self, labels)
+        self.group_classes_, self.group_lookup = self.classes_, self.lookup
+        super(SequenceLabelingEncoder).fit(self, labels)
+        self.ner_classes, self.ner_lookup = self.classes_, self.lookup
+
+    def transform(self, out, labels):
+        labels, groups = labels
+
+        self.classes_, self.lookup = self.group_classes_, self.group_lookup
+        group_labels = super(BROSEncoder).transform(out, (labels, groups))
+        start_token_labels, next_token_labels = group_labels
+
+        self.classes_, self.lookup = self.ner_classes_, self.ner_lookup
+        ner_labels = super(SequenceLabelingEncoder).transform(out, labels)
+
+        return [ner_labels, start_token_labels, next_token_labels]
+
+    def inverse_transform(self, y):
+        tags, start_tokens, next_tokens = y
+
+        self.classes_, self.lookup = self.group_classes_, self.group_lookup
+        group_tags = super(BROSEncoder).inverse_transform((start_token, next_tokens))
+        start_tokens, next_tokens = group_tags
+
+        self.classes_, self.lookup = self.ner_classes_, self.ner_lookup
+        tags = super(SequenceLabelingEncoder).inverse_transform(tags)
+
+        return (tags, start_tokens, next_tokens)
 
 class SequenceMultiLabelingEncoder(SequenceLabelingEncoder):
     def transform(self, out, labels):
