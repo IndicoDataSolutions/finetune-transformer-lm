@@ -147,6 +147,29 @@ class TokenRelationPipeline(GroupingPipeline):
             ),
         )
 
+class JointTokenRelationPipeline(GroupingPipeline):
+    def _target_encoder(self):
+        return JointTokenRelationEncoder(pad_token=self.config.pad_token)
+
+    def feed_shape_type_def(self):
+        TS = tf.TensorShape
+        types = {"tokens": tf.int32}
+        shapes = {"tokens": TS([None])}
+        types, shapes = self._add_context_info_if_present(types, shapes)
+        # TODO: Fix this
+        target_shape = [3, None, None]
+        return (
+            (
+                types,
+                tf.float32,
+            ),
+            (
+                shapes,
+                TS(target_shape),
+            ),
+        )
+
+
 class GroupSequenceLabeler(SequenceLabeler):
     defaults = {"group_bio_tagging": True, "bio_tagging": True}
 
@@ -575,13 +598,14 @@ class TokenRelationLabeler(SequenceLabeler):
         )
 
     def _predict_op(self, logits, **kwargs):
-        probas = tf.sigmoid(logits)
+        # TODO: Move to config
+        thresh = 0.8
+        idxs = kwargs.get("entity_mask")
 
-        # This is weird, but the conversion from probabilities to labels has to
-        # happen outside of tf, and we need the mask for the process
-        idxs = kwargs.get("mask")
+        probas = tf.sigmoid(logits) * mask
+        relations = tf.cast(probas > thresh, int32)
 
-        return idxs, probas
+        return relations, probas
 
     def predict(self, X, **kwargs):
         return super().predict(X, **kwargs)
@@ -610,53 +634,78 @@ class TokenRelationLabeler(SequenceLabeler):
 
             text = raw_texts[text_idx]
             doc_groups = []
-            for i, (mask, probas, start_idx, end_idx) in enumerate(zip(
-                label_seq, proba_seq, token_start_idx, token_end_idx
-            )):
-                if label == self.config.pad_token:
-                    continue
+        return
+    
+class JointTokenRelationLabeler(TokenRelationLabeler, SequenceLabeler):
+    defaults = {"chunk_long_sequences": False}
 
-                group_spans = [{
-                    "start": start_idx,
-                    "end": end_idx,
-                    "text": text[start_idx:end_idx],
-                }] 
+    def _get_input_pipeline(self):
+        return JointTokenRelationPipeline(config=self.config)
 
-                group_idxs = [i]
-                current_idx = next_tokens[i] 
-                while current_idx > 0:
-                    if current_idx in group_idxs:
-                        warnings.warn("Cylical group found!")
-                        break
+    def _target_model(
+        self,
+        *,
+        config,
+        featurizer_state,
+        targets,
+        n_outputs,
+        train=False,
+        reuse=None,
+        **kwargs
+    ):
+        return joint_token_relation_decoder(
+            hidden=featurizer_state["sequence_features"],
+            targets=targets,
+            n_targets=n_outputs,
+            pad_id=config.pad_idx,
+            config=config,
+            train=train,
+            reuse=reuse,
+            lengths=featurizer_state["lengths"],
+            use_crf=self.config.crf_sequence_labeling,
+            **kwargs
+        )
 
-                    current_start_idx = token_start_idx[current_idx]
-                    current_end_idx = token_end_idx[current_idx]
-                    for span in group_spans:
-                        if (current_start_idx >= span["end"] and
-                            not text[span["end"]:current_start_idx].strip()):
-                            span["end"] = current_end_idx
-                            span["text"] = text[span["start"]:span["end"]]
-                            break
-                        elif (current_end_idx <= span["start"] and
-                              not text[current_end_idx:span["start"]].strip()):
-                            span["start"] = current_start_idx
-                            span["text"] = text[span["start"]:span["end"]]
-                            break
-                    else:
-                        group_spans.append({
-                            "start": current_start_idx,
-                            "end": current_end_idx,
-                            "text": text[current_start_idx:current_end_idx],
-                        })
+    def _predict_op(self, logits, **kwargs):
+        group_idxs, group_probas = TokenRelationLabeler._predict_op(
+            self, logits["group_logits"], **kwargs
+        )
+        ner_idxs, ner_probas = SequenceLabeler._predict_op(
+            self, logits["ner_logits"], **kwargs
+        )
 
-                    group_idxs.append(current_idx)
-                    current_idx = next_tokens[current_idx]
-                group_spans = sorted(group_spans, key=lambda x: x["start"])
-                doc_groups.append({
-                    "tokens": group_spans,
-                    "label": None,
-                })
-            doc_groups = sorted(doc_groups, key=lambda x: x["tokens"][0]["start"])
-            all_groups.append(doc_groups)
-        return all_groups
+        # Check why this is neccesary
+        group_idxs = tf.cast(group_idxs, tf.int32)
 
+        # Produces [batch_size, 3, seq_len]
+        # idxs = tf.stack([ner_idxs, start_token_idxs, next_token_idxs], axis=1)
+        # TODO: Figure out how to do this
+        probas = ner_probas
+
+        return idxs, probas
+
+    def predict(self, X, **kwargs):
+        return super().predict(X, **kwargs)
+
+    def predict_proba(self, X, **kwargs):
+        raise NotImplementedError
+
+    def _predict(self, zipped_data, **kwargs):
+        predictions = list(self.process_long_sequence(zipped_data))
+        (token_start_idx, token_end_idx, start_of_doc, end_of_doc, label_seq,
+         proba_seq, start, end) = list(zip(*predictions))
+        ner_labels, group_labels = list(zip(*label_seq))
+
+        group_predictions = zip(token_start_idx, token_end_idx, start_of_doc,
+                              end_of_doc, group_labels, proba_seq, start, end)
+        ner_predictions = zip(token_start_idx, token_end_idx, start_of_doc,
+                              end_of_doc, ner_labels, proba_seq, start, end)
+
+
+        group_predictions = BROSLabeler._predict_decode(
+            self, zipped_data, group_predictions, **kwargs
+        )
+        ner_predictions = SequenceLabeler._predict_decode(
+            self, zipped_data, ner_predictions, **kwargs
+        )
+        return list(zip(ner_predictions, group_predictions))

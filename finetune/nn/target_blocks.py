@@ -1120,6 +1120,61 @@ def token_relation_decoder(
             },
         }
 
+def joint_token_relation_decoder(
+    hidden,
+    targets,
+    n_targets,
+    config,
+    pad_id,
+    train=False,
+    reuse=None,
+    lengths=None,
+    use_crf=True,
+    **kwargs
+):
+    bros_targets, seq_targets = None, None
+    if targets is not None:
+        token_relation_targets = targets[:, 1:, :]
+        seq_targets = targets[:, 0, :]
+        
+    token_relation_dict = token_relation_decoder(
+        hidden,
+        token_relation_targets,
+        n_targets,
+        config,
+        pad_id,
+        train=train,
+        reuse=reuse,
+        lengths=lengths,
+        **kwargs
+    )
+    seq_dict = sequence_labeler(
+        hidden,
+        seq_targets,
+        n_targets,
+        config,
+        pad_id,
+        multilabel=False,
+        train=train,
+        reuse=reuse,
+        lengths=lengths,
+        use_crf=use_crf,
+        **kwargs
+    )
+
+    return {
+        "logits": {
+            "ner_logits": seq_dict["logits"],
+            "group_logits": token_relation_dict["logits"],
+        },
+        "losses": token_relation_dict["losses"] + seq_dict["losses"],
+        "predict_params": {
+            "sequence_length": lengths,
+            "transition_matrix": seq_dict["predict_params"]["transition_matrix"],
+            "entity_mask": token_relation_dict["predict_params"]["entity_mask"],
+        },
+    }
+
 def association(
     hidden, lengths, targets, n_targets, config, train=False, reuse=None, **kwargs
 ):

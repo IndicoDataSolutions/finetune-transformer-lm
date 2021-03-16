@@ -522,12 +522,11 @@ class TokenRelationEncoder(BROSEncoder):
         return y
 
 class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
-    def __init__(self, pad_token, bio_tagging=False, group_tagging=False):
+    def __init__(self, pad_token, bio_tagging=False):
         # Can potentially replace these direct calls with super()s, but seems
         # like it'll be hard to maintain so leaving as is for now
         SequenceLabelingEncoder.__init__(self, pad_token,
-                                         bio_tagging=bio_tagging,
-                                         group_tagging=group_tagging)
+                                         bio_tagging=bio_tagging)
 
     def fit(self, labels):
         labels, groups = list(zip(*labels))
@@ -559,6 +558,29 @@ class JointBROSEncoder(BROSEncoder, SequenceLabelingEncoder):
         tags = SequenceLabelingEncoder.inverse_transform(self, tags)
 
         return (tags, start_tokens, next_tokens)
+
+class JointTokenRelationEncoder(TokenRelationEncoder, SequenceLabelingEncoder):
+    def __init__(self, pad_token, bio_tagging=False):
+        SequenceLabelingEncoder.__init__(self, pad_token,
+                                         bio_tagging=bio_tagging)
+
+    def fit(self, labels):
+        labels, groups = list(zip(*labels))
+        SequenceLabelingEncoder.fit(self, labels)
+
+    def transform(self, out, labels):
+        labels, groups = labels
+
+        group_labels = TokenRelationEncoder.transform(self, out, (labels, groups))
+        entity_mask, relation_matrix = group_labels
+        ner_labels = SequenceLabelingEncoder.transform(self, out, labels)
+
+        return [ner_labels, entity_mask, relation_matrix]
+
+    def inverse_transform(self, y):
+        tags, y = y
+        tags = SequenceLabelingEncoder.inverse_transform(self, tags)
+        return (tags, y)
 
 class SequenceMultiLabelingEncoder(SequenceLabelingEncoder):
     def transform(self, out, labels):
