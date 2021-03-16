@@ -2,7 +2,7 @@ import numpy as np
 
 from finetune.encoding.input_encoder import EncodedOutput
 from finetune.encoding.target_encoders import (
-    BROSEncoder,
+    SequenceLabelingEncoder,
 )
 
 def test_sequence_label_encoder():
@@ -87,4 +87,4 @@ def test_sequence_label_bio_tagging():
         useful_end=512
     )
     label_arr = encoder.transform(out, labels)
-    assert label_arr == [0, 1, 1, 2, 1, 2, 1, 0]
+    assert label_arr == [0, 1, 1, 2, 1, 2, 2, 0]
