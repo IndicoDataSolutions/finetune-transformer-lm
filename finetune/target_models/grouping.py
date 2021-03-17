@@ -617,7 +617,7 @@ class TokenRelationLabeler(SequenceLabeler):
         predictions = list(self.process_long_sequence(zipped_data))
         return self._predict_decode(zipped_data, predictions, **kwargs)
 
-    def _predict_decode(self, zipped_data, predictions, **kwargs):
+    def _predict_decode(self, zipped_data, predictions, entities=None, **kwargs):
         raw_texts = list(data.get("raw_text", data["X"]) for data in zipped_data)
         all_groups = []
         for text_idx, (
@@ -633,8 +633,53 @@ class TokenRelationLabeler(SequenceLabeler):
             assert start_of_doc and end_of_doc, "Chunk found in token relation!!"
 
             text = raw_texts[text_idx]
+
+            # TODO: Implement entity level pooling for the joint case when we
+            # have access to this information
+            if entities:
+                raise NotImplementedError
+            
+            # Track total groups and which group each token belongs to
+            group_idxs = []
+            token_groups = [None for _ in range(len(label_seq))]
+            for i, relation_row in enumerate(label_seq):
+                if token_groups[i]:
+                    current_group = token_groups[i]
+                else:
+                    current_group = set()
+                    group_idxs.append(current_group)
+                    token_groups[i] = current_group
+                for j, relation in enumerate(relation_row):
+                    if relation == 1:
+                        current_group.add(j)
+                        token_groups[j] = current_group
+
+            # Convert token indicies into group spans
             doc_groups = []
-        return
+            for idxs in group_idxs:
+                group_spans = []
+                prev_idx = None
+                for idx in sorted(list(idxs)):
+                    current_start_idx = token_start_idx[idx]
+                    current_end_idx = token_end_idx[idx]
+                    if (prev_idx and prev_idx == (idx - 1)):
+                        prev = group_spans[-1]
+                        prev_span["end"] = current_end_idx
+                        prev_span["text"] = text[prev_span["start"]:prev_span["end"]]
+                    else:
+                        group_spans.append({
+                            "start": current_start_idx,
+                            "end": current_end_idx,
+                            "text": text[current_start_idx:current_end_idx],
+                        })
+                    prev_idx = idx
+                doc_groups.append({
+                    "tokens": group_spans,
+                    "label": None,
+                })
+            all_groups.append(doc_groups)
+
+        return all_groups
     
 class JointTokenRelationLabeler(TokenRelationLabeler, SequenceLabeler):
     defaults = {"chunk_long_sequences": False}
